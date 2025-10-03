@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  password    String
+  name        String
+  role        UserRole  @default(STAFF)
+  permissions String[] // Array of permission strings
+  isActive    Boolean   @default(true)
+  lastLogin   DateTime?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  createdOrders Order[] @relation("OrderCreator")
+  createdUsers  User[]  @relation("UserCreator")
+  creator       User?   @relation("UserCreator", fields: [createdBy], references: [id])
+
+  @@map("users")
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                          String   @id @default(cuid())
+  name                        String
+  description                 String?
+  price                       Float
+  quantity                    Int
+  weight                      Float
+  delivery_price_for_pp       Float
+  delivery_price_for_province Float
+  categoryId                  String?
+  imageUrl                    String?
+  sku                         String?  @unique
+  isActive                    Boolean  @default(true)
+  bannerText                  String?
+  bannerColor                 String?  @default("blue")
+  bannerType                  String?  @default("info")
+  originalPrice               Float?
+  isOnSale                    Boolean  @default(false)
+  hasOptions                  Boolean  @default(false)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  // Relations
+  category     Category?            @relation(fields: [categoryId], references: [id])
+  orderItems   OrderItem[]
+  optionGroups ProductOptionGroup[]
+  variants     ProductVariant[]
+
+  @@map("products")
+}
+
+model ProductOptionGroup {
+  id            String  @id @default(cuid())
+  productId     String
+  name          String // e.g., "Size", "Color", "Material", "Finish"
+  description   String?
+  selectionType String  @default("SINGLE") // "SINGLE" or "MULTIPLE"
+  isRequired    Boolean @default(false)
+  sortOrder     Int     @default(0)
+
+  // Enhanced hierarchical structure fields
+  parentGroupId String? // Points to parent group - supports unlimited nesting
+  isParent      Boolean @default(false) // True for groups that have children
+  level         Int     @default(1) // Depth level: 1, 2, 3, 4, 5... unlimited
+  path          String? // Full path like "Size/Color/Material" for easy querying
+
+  // Metadata for variant generation
+  isActive     Boolean @default(true) // Can be disabled without deletion
+  affectsStock Boolean @default(true) // Whether this group affects stock calculation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  product     Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options     ProductOption[]
+  parentGroup ProductOptionGroup?  @relation("GroupHierarchy", fields: [parentGroupId], references: [id])
+  childGroups ProductOptionGroup[] @relation("GroupHierarchy")
+
+  @@map("product_option_groups")
+}
+
+model ProductOption {
+  id            String   @id @default(cuid())
+  optionGroupId String
+  name          String // e.g., "Small", "Large", "Red", "Blue"
+  description   String?
+  priceType     String   @default("BASE") // "FREE", "BASE", "FIXED", "PERCENTAGE"
+  priceValue    Float? // For FIXED (amount to add) or PERCENTAGE (percentage to add)
+  isDefault     Boolean  @default(false)
+  isAvailable   Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  stock         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  optionGroup    ProductOptionGroup     @relation(fields: [optionGroupId], references: [id], onDelete: Cascade)
+  orderItems     OrderItem[]
+  variantOptions ProductVariantOption[]
+
+  @@map("product_options")
+}
+
+// Enhanced model for product variants - supports unlimited nesting levels
+model ProductVariant {
+  id              String  @id @default(cuid())
+  productId       String
+  name            String // e.g., "Small White Cotton Glossy"
+  sku             String? // Unique SKU for this variant
+  stock           Int     @default(0)
+  priceAdjustment Float   @default(0) // Additional price for this variant
+  isActive        Boolean @default(true)
+
+  // Enhanced tracking fields for flexible variant management
+  optionPath String? // Cached path like "Size:Small/Color:White/Material:Cotton"
+  optionHash String? // Hash of option combination for fast lookups and uniqueness
+  sortOrder  Int     @default(0) // For custom ordering in UI
+
+  // Stock management enhancements
+  minStock Int? @default(0) // Minimum stock alert level
+  maxStock Int? // Maximum stock capacity
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  product        Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantOptions ProductVariantOption[]
+  orderItems     OrderItem[]
+
+  @@unique([productId, name]) // Ensure unique variant names per product
+  @@unique([productId, optionHash]) // Ensure unique option combinations
+  @@map("product_variants")
+}
+
+// Junction table linking variants to their option combinations
+model ProductVariantOption {
+  id        String @id @default(cuid())
+  variantId String
+  optionId  String
+
+  // Relations
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  option  ProductOption  @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, optionId]) // Each variant can only have one option per group
+  @@map("product_variant_options")
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  phone      String?
+  address    String?
+  city       String?
+  province   String?
+  postalCode String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  orders Order[]
+
+  @@map("customers")
+}
+
+model Driver {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders Order[]
+
+  @@map("drivers")
+}
+
+enum OrderSource {
+  ADMIN
+  CUSTOMER
+}
+
+model Order {
+  id                   String     @id
+  customerName         String
+  customerPhone        String
+  customerLocation     String
+  province             String
+  remark               String?
+  state                OrderState @default(PLACED)
+  subtotalPrice        Float
+  companyDeliveryPrice Float
+  deliveryPrice        Float
+  totalPrice           Float
+  isPaid               Boolean    @default(false)
+  isPrinted            Boolean    @default(false)
+
+  driverId        String?
+  createdBy       String?
+  orderSource     OrderSource @default(ADMIN)
+  paymentProofUrl String?
+  orderAt         DateTime    @default(now())
+  assignedAt      DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  driver     Driver?     @relation(fields: [driverId], references: [id])
+  creator    User?       @relation("OrderCreator", fields: [createdBy], references: [id])
+  orderItems OrderItem[]
+  Customer   Customer?   @relation(fields: [customerId], references: [id])
+  customerId String?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String  @id @default(cuid())
+  orderId         String
+  productId       String
+  productOptionId String?
+  quantity        Int
+  price           Float
+  weight          Float
+  optionDetails   Json? // Store selected options as JSON for flexibility
+
+  // Relations
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product         @relation(fields: [productId], references: [id])
+  productOption    ProductOption?  @relation(fields: [productOptionId], references: [id])
+  ProductVariant   ProductVariant? @relation(fields: [productVariantId], references: [id])
+  productVariantId String?
+
+  @@map("order_items")
+}
+
+enum OrderState {
+  PLACED
+  DELIVERING
+  RETURNED
+  COMPLETED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+model BlacklistedPhone {
+  id        String   @id @default(cuid())
+  phone     String   @unique // normalized digits-only phone
+  rawPhone  String
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@map("blacklisted_phones")
+}
