@@ -1,24 +1,39 @@
 {
   "version": 2,
+  "functions": {
+    "server.js": {
+      "maxDuration": 25
+    }
+  },
   "builds": [
     {
       "src": "server.js",
       "use": "@vercel/node",
       "config": {
         "maxLambdaSize": "50mb",
-        "includeFiles": "prisma/**/*"
+        "includeFiles": ["prisma/**", "middleware/**", "routes/**", "lib/**", "config/**"]
       }
     }
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/server.js"
+    },
+    {
       "src": "/(.*)",
-      "dest": "server.js"
+      "dest": "/server.js"
     }
   ],
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "PRISMA_CLI_BINARY_TARGETS": "rhel-openssl-1.0.x"
+  },
+  "build": {
+    "env": {
+      "PRISMA_CLI_BINARY_TARGETS": "rhel-openssl-1.0.x"
+    }
   }
 }

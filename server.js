@@ -4,6 +4,10 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
+// Performance optimization imports (simplified to avoid header conflicts)
+const { setupCompression, performanceLogger, requestTimeout } = require("./middleware/simple-performance");
+const { cacheMiddleware, getCacheStats } = require("./middleware/cache");
+
 const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/products");
 const productOptionRoutes = require("./routes/productOptions");
@@ -18,6 +22,11 @@ const blacklistPhoneRoutes = require("./routes/blacklist-phones");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Performance middleware (safe versions to avoid header conflicts)
+app.use(setupCompression());
+app.use(performanceLogger()); // Logging-only performance monitoring
+app.use(requestTimeout(25000)); // 25 seconds for Vercel compatibility
 
 // Security middleware
 app.use(helmet());
@@ -37,6 +46,8 @@ const ordersLimiter = rateLimit({
   message: "Too many order requests, please wait a moment.",
 });
 app.use("/api/orders", ordersLimiter);
+
+// Note: Selective caching applied directly in route handlers to avoid middleware conflicts
 
 // Enhanced CORS configuration
 app.use(
@@ -87,8 +98,41 @@ app.use("/api/blacklist-phones", blacklistPhoneRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/customer-orders", customerOrderRoutes);
 
-// Health check endpoint
-app.get("/api/health", async (req, res) => {
+// Cache statistics endpoint for monitoring
+app.get("/api/health/cache", (req, res) => {
+  try {
+    const stats = getCacheStats();
+    res.json({
+      status: "OK",
+      timestamp: new Date().toISOString(),
+      cache: stats,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "ERROR",
+      message: "Failed to get cache stats",
+      error: error.message,
+    });
+  }
+});
+
+// Fast health check endpoint (no database connection)
+app.get("/api/health", (req, res) => {
+  const startTime = Date.now();
+  const responseTime = Date.now() - startTime;
+  
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+    serverless: !!process.env.VERCEL,
+    responseTime: `${responseTime}ms`,
+    message: "Service is running"
+  });
+});
+
+// Database health check endpoint (separate for when needed)
+app.get("/api/health/database", async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -96,8 +140,13 @@ app.get("/api/health", async (req, res) => {
     const getPrismaClient = require("./lib/prisma");
     const prisma = getPrismaClient();
     
-    // Simple database query to test connection
-    await prisma.$queryRaw`SELECT 1`;
+    // Simple database query to test connection with timeout
+    const queryPromise = prisma.$queryRaw`SELECT 1`;
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Database query timeout')), 5000)
+    );
+    
+    await Promise.race([queryPromise, timeoutPromise]);
     
     const responseTime = Date.now() - startTime;
     

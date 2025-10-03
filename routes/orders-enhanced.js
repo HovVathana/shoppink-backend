@@ -214,8 +214,8 @@ router.get(
       const dbSortField = sortFieldMap[sortBy] || "orderAt";
       orderBy[dbSortField] = sortOrder.toLowerCase() === "asc" ? "asc" : "desc";
 
-      // Get orders with pagination - optimized includes
-      const [orders, totalCount] = await Promise.all([
+      // Get orders with pagination - optimized includes and parallel execution
+      const queries = [
         prisma.order.findMany({
           where,
           skip,
@@ -238,8 +238,14 @@ router.get(
               },
             },
             orderItems: {
-              take: 20, // Limit order items per order for performance
-              include: {
+              take: 50, // Increased limit for better UX while still optimal
+              select: {
+                id: true,
+                productId: true,
+                quantity: true,
+                price: true,
+                weight: true,
+                optionDetails: true,
                 product: {
                   select: {
                     id: true,
@@ -251,10 +257,18 @@ router.get(
               },
             },
           },
-        }),
-        // Only count when needed for performance
-        limit > 100 ? null : prisma.order.count({ where }),
-      ]);
+        })
+      ];
+      
+      // Only count for smaller queries or when pagination info is needed
+      const shouldCount = limit <= 200 || page === 1;
+      if (shouldCount) {
+        queries.push(prisma.order.count({ where }));
+      }
+      
+      const results = await Promise.all(queries);
+      const orders = results[0];
+      const totalCount = results[1] || null;
 
       const totalPages = totalCount ? Math.ceil(totalCount / limit) : null;
 
@@ -385,22 +399,52 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
     }
 
     // Batch validate driver and products to reduce database queries
-    const productIds = convertedProducts.map(p => p.productId);
-    const [driver, productsData] = await Promise.all([
-      // Validate driver if provided
-      driverId ? prisma.driver.findUnique({ where: { id: driverId } }) : null,
-      // Batch fetch all products with their options
-      prisma.product.findMany({
-        where: { id: { in: productIds } },
-        include: {
-          optionGroups: {
-            include: {
-              options: true,
+    const productIds = [...new Set(convertedProducts.map(p => p.productId))];
+    const queries = [];
+    
+    // Add driver validation query if needed
+    if (driverId) {
+      queries.push(prisma.driver.findUnique({ 
+        where: { id: driverId },
+        select: { id: true, name: true, isActive: true }
+      }));
+    } else {
+      queries.push(Promise.resolve(null));
+    }
+    
+    // Optimized product fetch with selective includes
+    queries.push(prisma.product.findMany({
+      where: { 
+        id: { in: productIds },
+        isActive: true
+      },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        quantity: true,
+        hasOptions: true,
+        isActive: true,
+        optionGroups: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            name: true,
+            options: {
+              where: { isAvailable: true },
+              select: {
+                id: true,
+                name: true,
+                priceType: true,
+                priceValue: true,
+              },
             },
           },
         },
-      })
-    ]);
+      },
+    }));
+    
+    const [driver, productsData] = await Promise.all(queries);
 
     // Validate driver
     if (driverId && !driver) {
@@ -423,26 +467,41 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
       product._productData = productExists;
     }
 
-    // Batch fetch all variants for products that need them
+    // Optimized batch fetch of variants with selective loading
     const productsWithOptions = convertedProducts.filter(p => 
       p._productData.hasOptions && p.optionDetails && p.optionDetails.length > 0
     );
     
     const variantsByProduct = new Map();
     if (productsWithOptions.length > 0) {
-      const variantProductIds = productsWithOptions.map(p => p.productId);
+      const variantProductIds = [...new Set(productsWithOptions.map(p => p.productId))];
+      
+      // Fetch variants with optimized select and joins
       const allVariants = await prisma.productVariant.findMany({
-        where: { productId: { in: variantProductIds } },
-        include: { variantOptions: true },
+        where: { 
+          productId: { in: variantProductIds },
+          isActive: true
+        },
+        select: {
+          id: true,
+          productId: true,
+          stock: true,
+          priceAdjustment: true,
+          variantOptions: {
+            select: {
+              optionId: true,
+            },
+          },
+        },
       });
       
-      // Group variants by product ID
-      allVariants.forEach(variant => {
+      // Group variants by product ID efficiently
+      for (const variant of allVariants) {
         if (!variantsByProduct.has(variant.productId)) {
           variantsByProduct.set(variant.productId, []);
         }
         variantsByProduct.get(variant.productId).push(variant);
-      });
+      }
     }
 
     // Now validate stock for all products
@@ -633,6 +692,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
             // Pre-compute all order items data to avoid queries inside transaction
             const orderItemsData = [];
             
+            // Process all products in batch for better performance
             for (const product of convertedProducts) {
               // Flatten selected option IDs from optionDetails
               const selectedOptionIds = (product.optionDetails || [])
@@ -646,7 +706,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
                 selectedOptionIds
               );
 
-              // Use pre-fetched product data to compute price
+              // Use pre-fetched product data to compute price efficiently
               const productData = productMap.get(product.productId);
               const variants = variantsByProduct.get(product.productId) || [];
               const variant = variantId ? variants.find(v => v.id === variantId) : null;

@@ -159,13 +159,22 @@ router.post(
         }
       }
 
-      // Validate products exist and have sufficient stock
+      // Optimized product validation with selective loading
       const uniqueProductIds = [
         ...new Set(parsedItems.map((item) => item.productId)),
       ];
+      
       const products = await prisma.product.findMany({
         where: {
           id: { in: uniqueProductIds },
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          quantity: true,
+          hasOptions: true,
           isActive: true,
         },
       });
@@ -175,6 +184,9 @@ router.post(
           message: "One or more products not found or inactive",
         });
       }
+      
+      // Create product lookup map for O(1) access
+      const productMap = new Map(products.map(p => [p.id, p]));
 
       // Note: Stock validation is not performed here since stock will be checked when driver is assigned
 
@@ -295,19 +307,18 @@ router.post(
                   selectedOptionIds
                 );
 
-                // Compute safe server-side price from product base + variant adjustment
-                const variant = variantId
-                  ? await tx.productVariant.findUnique({
-                      where: { id: variantId },
-                      select: { priceAdjustment: true },
-                    })
-                  : null;
-                const baseProduct = await tx.product.findUnique({
-                  where: { id: item.productId },
-                  select: { price: true },
-                });
-                const computedPrice =
-                  (baseProduct?.price || 0) + (variant?.priceAdjustment || 0);
+                // Compute safe server-side price using pre-fetched product data
+                const baseProduct = productMap.get(item.productId);
+                let computedPrice = baseProduct?.price || 0;
+                
+                // Add variant price adjustment if applicable
+                if (variantId) {
+                  const variant = await tx.productVariant.findUnique({
+                    where: { id: variantId },
+                    select: { priceAdjustment: true },
+                  });
+                  computedPrice += variant?.priceAdjustment || 0;
+                }
 
                 await tx.orderItem.create({
                   data: {
@@ -520,8 +531,8 @@ router.get(
       const dbSortField = sortFieldMap[sortBy] || "orderAt";
       orderBy[dbSortField] = sortOrder.toLowerCase() === "asc" ? "asc" : "desc";
 
-      // Get orders with pagination
-      const [orders, totalCount] = await Promise.all([
+      // Optimized parallel queries for better performance
+      const queries = [
         prisma.order.findMany({
           where,
           skip,
@@ -536,12 +547,20 @@ router.get(
               },
             },
             orderItems: {
-              include: {
+              take: 50, // Limit items per order for performance
+              select: {
+                id: true,
+                productId: true,
+                quantity: true,
+                price: true,
+                weight: true,
+                optionDetails: true,
                 product: {
                   select: {
                     id: true,
                     name: true,
                     imageUrl: true,
+                    weight: true,
                   },
                 },
               },
@@ -554,9 +573,17 @@ router.get(
               },
             },
           },
-        }),
-        prisma.order.count({ where }),
-      ]);
+        })
+      ];
+      
+      // Only count for smaller datasets or when needed
+      if (limit <= 500) {
+        queries.push(prisma.order.count({ where }));
+      }
+      
+      const results = await Promise.all(queries);
+      const orders = results[0];
+      const totalCount = results[1] || null;
 
       const totalPages = Math.ceil(totalCount / limit);
 
