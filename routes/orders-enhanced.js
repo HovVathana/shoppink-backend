@@ -384,20 +384,14 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
       }
     }
 
-    // Validate driver if provided
-    if (driverId) {
-      const driver = await prisma.driver.findUnique({
-        where: { id: driverId },
-      });
-      if (!driver) {
-        return res.status(400).json({ message: "Invalid driver ID" });
-      }
-    }
-
-    // Validate products and stock
-    for (const product of convertedProducts) {
-      const productExists = await prisma.product.findUnique({
-        where: { id: product.productId },
+    // Batch validate driver and products to reduce database queries
+    const productIds = convertedProducts.map(p => p.productId);
+    const [driver, productsData] = await Promise.all([
+      // Validate driver if provided
+      driverId ? prisma.driver.findUnique({ where: { id: driverId } }) : null,
+      // Batch fetch all products with their options
+      prisma.product.findMany({
+        where: { id: { in: productIds } },
         include: {
           optionGroups: {
             include: {
@@ -405,14 +399,56 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
             },
           },
         },
-      });
+      })
+    ]);
 
+    // Validate driver
+    if (driverId && !driver) {
+      return res.status(400).json({ message: "Invalid driver ID" });
+    }
+
+    // Create product lookup map for O(1) access
+    const productMap = new Map(productsData.map(p => [p.id, p]));
+
+    // Validate all products exist
+    for (const product of convertedProducts) {
+      const productExists = productMap.get(product.productId);
       if (!productExists) {
         return res
           .status(400)
           .json({ message: `Product with ID ${product.productId} not found` });
       }
 
+      // Store product for stock validation later
+      product._productData = productExists;
+    }
+
+    // Batch fetch all variants for products that need them
+    const productsWithOptions = convertedProducts.filter(p => 
+      p._productData.hasOptions && p.optionDetails && p.optionDetails.length > 0
+    );
+    
+    const variantsByProduct = new Map();
+    if (productsWithOptions.length > 0) {
+      const variantProductIds = productsWithOptions.map(p => p.productId);
+      const allVariants = await prisma.productVariant.findMany({
+        where: { productId: { in: variantProductIds } },
+        include: { variantOptions: true },
+      });
+      
+      // Group variants by product ID
+      allVariants.forEach(variant => {
+        if (!variantsByProduct.has(variant.productId)) {
+          variantsByProduct.set(variant.productId, []);
+        }
+        variantsByProduct.get(variant.productId).push(variant);
+      });
+    }
+
+    // Now validate stock for all products
+    for (const product of convertedProducts) {
+      const productExists = product._productData;
+      
       // Check stock based on whether product has options
       if (
         productExists.hasOptions &&
@@ -427,11 +463,8 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
           )
           .filter(Boolean);
 
-        // 2) Load variants for this product
-        const variants = await prisma.productVariant.findMany({
-          where: { productId: product.productId },
-          include: { variantOptions: true },
-        });
+        // 2) Get variants from cache
+        const variants = variantsByProduct.get(product.productId) || [];
 
         if (!variants || variants.length === 0) {
           // If no variants exist, skip strict validation (legacy); stock is enforced on assignment
@@ -498,6 +531,9 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
           });
         }
       }
+      
+      // Clean up temporary data
+      delete product._productData;
     }
 
     // Generate custom order ID with timestamp + random: SP + DDMMYY + HHMM + 5 random chars
@@ -548,13 +584,10 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
               },
             });
 
-            // Helper to resolve variant by selected option IDs
-            const resolveVariantId = async (productId, optionIds) => {
+            // Helper to resolve variant by selected option IDs using pre-fetched data
+            const resolveVariantId = (productId, optionIds) => {
               if (!optionIds || optionIds.length === 0) return null;
-              const variants = await tx.productVariant.findMany({
-                where: { productId },
-                include: { variantOptions: true },
-              });
+              const variants = variantsByProduct.get(productId) || [];
               if (!variants || variants.length === 0) return null;
               const desired = new Set(optionIds);
 
@@ -597,7 +630,9 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
               return best; // may be null if no match
             };
 
-            // Create order items (stock will be deducted when driver is assigned)
+            // Pre-compute all order items data to avoid queries inside transaction
+            const orderItemsData = [];
+            
             for (const product of convertedProducts) {
               // Flatten selected option IDs from optionDetails
               const selectedOptionIds = (product.optionDetails || [])
@@ -606,46 +641,64 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
                 )
                 .filter(Boolean);
 
-              const variantId = await resolveVariantId(
+              const variantId = resolveVariantId(
                 product.productId,
                 selectedOptionIds
               );
 
-              // Compute safe server-side price from product base + variant adjustment
-              const baseProduct = await tx.product.findUnique({
-                where: { id: product.productId },
-                select: { price: true },
-              });
-              const variant = variantId
-                ? await tx.productVariant.findUnique({
-                    where: { id: variantId },
-                    select: { priceAdjustment: true },
-                  })
-                : null;
+              // Use pre-fetched product data to compute price
+              const productData = productMap.get(product.productId);
+              const variants = variantsByProduct.get(product.productId) || [];
+              const variant = variantId ? variants.find(v => v.id === variantId) : null;
+              
               const computedPrice =
-                (baseProduct?.price || 0) + (variant?.priceAdjustment || 0);
+                (productData?.price || 0) + (variant?.priceAdjustment || 0);
 
-              await tx.orderItem.create({
-                data: {
-                  orderId: newOrder.id,
-                  productId: product.productId,
-                  quantity: product.quantity,
-                  price: computedPrice,
-                  weight: product.weight || 0,
-                  optionDetails:
-                    product.optionDetails && product.optionDetails.length > 0
-                      ? {
-                          variantId: variantId,
-                          selections: product.optionDetails,
-                        }
-                      : null,
-                },
+              orderItemsData.push({
+                orderId: newOrder.id,
+                productId: product.productId,
+                quantity: product.quantity,
+                price: computedPrice,
+                weight: product.weight || 0,
+                optionDetails:
+                  product.optionDetails && product.optionDetails.length > 0
+                    ? {
+                        variantId: variantId,
+                        selections: product.optionDetails,
+                      }
+                    : null,
               });
-
-              // Note: Stock is NOT deducted here - it will be deducted when driver is assigned
             }
 
-            return newOrder;
+            // Bulk create all order items in a single query
+            await tx.orderItem.createMany({
+              data: orderItemsData,
+            });
+
+            // Note: Stock is NOT deducted here - it will be deducted when driver is assigned
+
+            // Fetch the complete order with relations in the same transaction
+            const completeOrder = await tx.order.findUnique({
+              where: { id: newOrder.id },
+              include: {
+                driver: true,
+                creator: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                  },
+                },
+                orderItems: {
+                  include: {
+                    product: true,
+                  },
+                },
+              },
+            });
+            
+            return completeOrder;
           });
         } catch (error) {
           if (error.code === "P2002" && attempt < maxRetries) {
@@ -659,28 +712,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
       throw new Error("Failed to create order after maximum retries");
     };
 
-    const order = await createOrderWithRetry();
-
-    // Fetch the complete order with relations
-    const completeOrder = await prisma.order.findUnique({
-      where: { id: order.id },
-      include: {
-        driver: true,
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-        orderItems: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
+    const completeOrder = await createOrderWithRetry();
 
     res.status(201).json({
       message: "Order created successfully",

@@ -9,6 +9,7 @@ const {
   requireDeleteDrivers,
   requireDriversForOrders,
 } = require("../middleware/permissions");
+const { cacheMiddleware } = require("../middleware/cache");
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -32,6 +33,7 @@ const driverValidation = [
 // GET /api/drivers - Get all drivers with pagination and filtering
 router.get(
   "/",
+  cacheMiddleware(300), // 5 minutes cache
   requireDriversForOrders,
   [
     query("page")
@@ -111,7 +113,7 @@ router.get(
 );
 
 // GET /api/drivers/all - Get all active drivers (for dropdowns)
-router.get("/all", requireDriversForOrders, async (req, res) => {
+router.get("/all", cacheMiddleware(600), requireDriversForOrders, async (req, res) => {
   try {
     const drivers = await prisma.driver.findMany({
       where: { isActive: true },
