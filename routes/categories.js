@@ -1,6 +1,6 @@
 const express = require("express");
 const { body, validationResult, query } = require("express-validator");
-const { PrismaClient } = require("@prisma/client");
+const getPrismaClient = require("../lib/prisma");
 const {
   authenticateUser,
   requireViewCategories,
@@ -10,7 +10,7 @@ const {
 } = require("../middleware/permissions");
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const prisma = getPrismaClient();
 
 // All routes require authentication
 router.use(authenticateUser);

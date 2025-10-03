@@ -1,6 +1,6 @@
 const express = require("express");
 const { body, validationResult, query } = require("express-validator");
-const { PrismaClient } = require("@prisma/client");
+const getPrismaClient = require("../lib/prisma");
 const multer = require("multer");
 const { v2: cloudinary } = require("cloudinary");
 const {
@@ -13,7 +13,7 @@ const {
 } = require("../middleware/permissions");
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const prisma = getPrismaClient();
 
 // Configure Cloudinary
 cloudinary.config({

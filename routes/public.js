@@ -1,9 +1,9 @@
 const express = require("express");
 const { query, validationResult } = require("express-validator");
-const { PrismaClient } = require("@prisma/client");
+const getPrismaClient = require("../lib/prisma");
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const prisma = getPrismaClient();
 
 // GET /api/public/products - Get all active products (public access)
 router.get(

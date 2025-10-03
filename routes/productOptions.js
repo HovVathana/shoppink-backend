@@ -1,6 +1,6 @@
 const express = require("express");
 const { body, validationResult, param } = require("express-validator");
-const { PrismaClient } = require("@prisma/client");
+const getPrismaClient = require("../lib/prisma");
 const { authenticateToken } = require("../middleware/auth");
 const {
   requireCreateProducts,
@@ -11,7 +11,7 @@ const {
 const hierarchicalStockService = require("../services/hierarchicalStockService");
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const prisma = getPrismaClient();
 
 // Apply authentication to all routes
 router.use(authenticateToken);

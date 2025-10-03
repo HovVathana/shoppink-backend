@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
-const { PrismaClient } = require("@prisma/client");
+const getPrismaClient = require("../lib/prisma");
 const {
   authenticateUser,
   requireAdmin,
@@ -11,7 +11,7 @@ const {
   requireDeleteStaff,
 } = require("../middleware/permissions");
 
-const prisma = new PrismaClient();
+const prisma = getPrismaClient();
 
 // Role-based default permissions
 const getRolePermissions = (role) => {

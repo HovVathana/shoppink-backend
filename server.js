@@ -47,7 +47,10 @@ app.use(
       "http://localhost:8000",
       "http://192.168.100.138:3000",
       ...(process.env.NODE_ENV === "production"
-        ? ["https://shoppink-frontend.vercel.app"]
+        ? [
+            "https://shoppink-frontend.vercel.app",
+            process.env.FRONTEND_URL, // Add your actual frontend URL
+          ].filter(Boolean)
         : []),
     ],
     credentials: true,
@@ -59,6 +62,7 @@ app.use(
       "Accept",
     ],
     exposedHeaders: ["Content-Range", "X-Content-Range"],
+    maxAge: 86400, // Cache preflight requests for 24 hours
   })
 );
 
@@ -84,12 +88,40 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/customer-orders", customerOrderRoutes);
 
 // Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
-  });
+app.get("/api/health", async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    // Test database connection
+    const getPrismaClient = require("./lib/prisma");
+    const prisma = getPrismaClient();
+    
+    // Simple database query to test connection
+    await prisma.$queryRaw`SELECT 1`;
+    
+    const responseTime = Date.now() - startTime;
+    
+    res.json({
+      status: "OK",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || "development",
+      database: "connected",
+      responseTime: `${responseTime}ms`,
+      serverless: !!process.env.VERCEL,
+    });
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    
+    res.status(503).json({
+      status: "ERROR",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || "development",
+      database: "disconnected",
+      error: error.message,
+      responseTime: `${responseTime}ms`,
+      serverless: !!process.env.VERCEL,
+    });
+  }
 });
 
 // Error handling middleware
@@ -109,8 +141,14 @@ app.use("*", (req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔗 API URL: http://localhost:${PORT}/api`);
-});
+// Only start server if not in serverless environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
+    console.log(`🔗 API URL: http://localhost:${PORT}/api`);
+  });
+}
+
+// Export the app for serverless deployment
+module.exports = app;

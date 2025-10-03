@@ -1,12 +1,12 @@
 const express = require("express");
-const { PrismaClient } = require("@prisma/client");
+const getPrismaClient = require("../lib/prisma");
 const {
   authenticateUser,
   requireDashboardAccess,
 } = require("../middleware/permissions");
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const prisma = getPrismaClient();
 
 // All routes require authentication
 router.use(authenticateUser);

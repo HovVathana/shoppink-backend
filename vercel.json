@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "server.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "prisma/**/*"
+      }
     }
   ],
   "routes": [
@@ -12,6 +15,12 @@
       "dest": "server.js"
     }
   ],
+  "functions": {
+    "server.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  },
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "env": {
