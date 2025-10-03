@@ -47,7 +47,7 @@ app.use(
       "http://localhost:8000",
       "http://192.168.100.138:3000",
       ...(process.env.NODE_ENV === "production"
-        ? ["https://your-frontend-domain.com"]
+        ? ["https://shoppink-frontend.vercel.app"]
         : []),
     ],
     credentials: true,
