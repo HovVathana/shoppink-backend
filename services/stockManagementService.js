@@ -374,7 +374,7 @@ class StockManagementService {
         results: validationResults,
       };
     } catch (error) {
-      console.error("Validate stock for order error:", error);
+      console.error("Validate stock for order error: ", error);
       throw error;
     }
   }
