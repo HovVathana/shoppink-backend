@@ -4,6 +4,7 @@ const {
   authenticateUser,
   requireDashboardAccess,
 } = require("../middleware/permissions");
+const { cacheMiddleware } = require("../middleware/cache");
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -12,7 +13,7 @@ const prisma = getPrismaClient();
 router.use(authenticateUser);
 
 // GET /api/dashboard/stats - Get dashboard statistics
-router.get("/stats", requireDashboardAccess, async (req, res) => {
+router.get("/stats", cacheMiddleware(120), requireDashboardAccess, async (req, res) => {
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -91,20 +92,24 @@ router.get("/stats", requireDashboardAccess, async (req, res) => {
       }),
     ]);
 
-    // Get product details for top products
-    const topProductsWithDetails = await Promise.all(
-      topProducts.map(async (item) => {
-        const product = await prisma.product.findUnique({
-          where: { id: item.productId },
-          select: { id: true, name: true, price: true, imageUrl: true },
-        });
-        return {
-          ...product,
-          totalSold: item._sum.quantity,
-          orderCount: item._count.productId,
-        };
-      })
-    );
+    // Get product details for top products - optimized to avoid N+1 query
+    const topProductIds = topProducts.map(item => item.productId);
+    const productDetails = topProductIds.length > 0 ? await prisma.product.findMany({
+      where: { id: { in: topProductIds } },
+      select: { id: true, name: true, price: true, imageUrl: true },
+    }) : [];
+    
+    // Create lookup map for performance
+    const productMap = new Map(productDetails.map(p => [p.id, p]));
+    
+    const topProductsWithDetails = topProducts.map((item) => {
+      const product = productMap.get(item.productId);
+      return {
+        ...product,
+        totalSold: item._sum.quantity,
+        orderCount: item._count.productId,
+      };
+    });
 
     // Calculate growth percentages
     const orderGrowth =
@@ -155,7 +160,7 @@ router.get("/stats", requireDashboardAccess, async (req, res) => {
 });
 
 // GET /api/dashboard/charts/revenue - Get revenue chart data
-router.get("/charts/revenue", requireDashboardAccess, async (req, res) => {
+router.get("/charts/revenue", cacheMiddleware(300), requireDashboardAccess, async (req, res) => {
   try {
     const now = new Date();
     const last12Months = [];
@@ -190,7 +195,7 @@ router.get("/charts/revenue", requireDashboardAccess, async (req, res) => {
 });
 
 // GET /api/dashboard/charts/orders - Get orders chart data
-router.get("/charts/orders", requireDashboardAccess, async (req, res) => {
+router.get("/charts/orders", cacheMiddleware(180), requireDashboardAccess, async (req, res) => {
   try {
     const orderStatusCounts = await prisma.order.groupBy({
       by: ["status"],

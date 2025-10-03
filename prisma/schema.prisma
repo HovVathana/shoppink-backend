@@ -70,6 +70,10 @@ model Product {
   optionGroups ProductOptionGroup[]
   variants     ProductVariant[]
 
+  // Performance indexes
+  @@index([isActive, categoryId]) // For active product filtering by category
+  @@index([quantity]) // For low stock queries
+  @@index([isActive]) // For active products only
   @@map("products")
 }
 
@@ -241,6 +245,13 @@ model Order {
   Customer   Customer?   @relation(fields: [customerId], references: [id])
   customerId String?
 
+  // Performance indexes
+  @@index([orderAt, state]) // For order filtering and sorting
+  @@index([createdAt, orderSource]) // For dashboard queries
+  @@index([customerPhone]) // For phone number searches
+  @@index([assignedAt]) // For assigned orders filtering
+  @@index([state, createdAt]) // Composite index for status + date filters
+  @@index([driverId]) // For driver-related queries
   @@map("orders")
 }
 
@@ -261,6 +272,9 @@ model OrderItem {
   ProductVariant   ProductVariant? @relation(fields: [productVariantId], references: [id])
   productVariantId String?
 
+  // Performance indexes
+  @@index([orderId, productId]) // For order-product joins
+  @@index([productId]) // For product-based queries
   @@map("order_items")
 }
 

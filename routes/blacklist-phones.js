@@ -6,6 +6,7 @@ const {
   requireViewOrders,
   requireEditOrders,
 } = require("../middleware/permissions");
+const { cacheMiddleware } = require("../middleware/cache");
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -15,8 +16,8 @@ router.use(authenticateUser);
 
 const normalizePhone = (p) => (p || "").replace(/[^0-9]/g, "");
 
-// GET /api/blacklist-phones - list entries
-router.get("/", requireViewOrders, async (req, res) => {
+// GET /api/blacklist-phones - list entries with caching
+router.get("/", cacheMiddleware(300), requireViewOrders, async (req, res) => {
   try {
     const entries = await prisma.blacklistedPhone.findMany({
       orderBy: { createdAt: "desc" },
@@ -102,9 +103,10 @@ router.delete(
   }
 );
 
-// Optional check endpoint: GET /api/blacklist-phones/check?phone=...
+// Optional check endpoint: GET /api/blacklist-phones/check?phone=... with caching
 router.get(
   "/check",
+  cacheMiddleware(180),
   requireViewOrders,
   [query("phone").isString().trim()],
   async (req, res) => {

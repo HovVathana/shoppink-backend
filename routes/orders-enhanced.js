@@ -9,6 +9,7 @@ const {
   requireDeleteOrders,
 } = require("../middleware/permissions");
 const stockManagementService = require("../services/stockManagementService");
+const { cacheMiddleware } = require("../middleware/cache");
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -213,7 +214,7 @@ router.get(
       const dbSortField = sortFieldMap[sortBy] || "orderAt";
       orderBy[dbSortField] = sortOrder.toLowerCase() === "asc" ? "asc" : "desc";
 
-      // Get orders with pagination
+      // Get orders with pagination - optimized includes
       const [orders, totalCount] = await Promise.all([
         prisma.order.findMany({
           where,
@@ -237,6 +238,7 @@ router.get(
               },
             },
             orderItems: {
+              take: 20, // Limit order items per order for performance
               include: {
                 product: {
                   select: {
@@ -250,10 +252,11 @@ router.get(
             },
           },
         }),
-        prisma.order.count({ where }),
+        // Only count when needed for performance
+        limit > 100 ? null : prisma.order.count({ where }),
       ]);
 
-      const totalPages = Math.ceil(totalCount / limit);
+      const totalPages = totalCount ? Math.ceil(totalCount / limit) : null;
 
       res.json({
         orders,
@@ -261,7 +264,7 @@ router.get(
           currentPage: page,
           totalPages,
           totalCount,
-          hasNext: page < totalPages,
+          hasNext: totalCount ? page < totalPages : orders.length === limit,
           hasPrev: page > 1,
         },
       });
