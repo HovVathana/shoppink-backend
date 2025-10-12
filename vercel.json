@@ -21,7 +21,7 @@
     { "src": "/(.*)", "dest": "/server.js" }
   ],
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run vercel-build",
   "env": {
     "NODE_ENV": "production",
     "PRISMA_CLI_BINARY_TARGETS": "rhel-openssl-1.0.x"
