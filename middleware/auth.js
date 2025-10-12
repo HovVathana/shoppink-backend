@@ -21,6 +21,7 @@ const authenticateToken = async (req, res, next) => {
         id: true,
         email: true,
         name: true,
+        profilePicture: true,
         role: true,
         permissions: true,
         isActive: true,

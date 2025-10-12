@@ -822,6 +822,11 @@ router.put(
         updateData.completedAt = new Date();
       }
 
+      // Set returned time if state is RETURNED
+      if (state === "RETURNED") {
+        updateData.returnedAt = new Date();
+      }
+
       const order = await prisma.order.update({
         where: { id },
         data: updateData,

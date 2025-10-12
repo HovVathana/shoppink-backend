@@ -87,6 +87,7 @@ router.post("/signup", signupValidation, async (req, res) => {
         id: true,
         email: true,
         name: true,
+        profilePicture: true,
         role: true,
         permissions: true,
         createdAt: true,
@@ -150,6 +151,7 @@ router.post("/login", loginValidation, async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.name,
+        profilePicture: user.profilePicture,
         role: user.role,
         permissions: user.permissions,
       },
@@ -172,5 +174,64 @@ router.get("/me", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// PUT /api/auth/profile - Update user profile
+router.put(
+  "/profile",
+  authenticateToken,
+  [
+    body("name")
+      .optional()
+      .trim()
+      .isLength({ min: 2 })
+      .withMessage("Name must be at least 2 characters"),
+    body("profilePicture")
+      .optional()
+      .isURL()
+      .withMessage("Profile picture must be a valid URL"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
+      }
+
+      const { name, profilePicture } = req.body;
+      const userId = req.user.id;
+
+      // Build update data object
+      const updateData = {};
+      if (name !== undefined) updateData.name = name;
+      if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
+
+      // Update user
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          profilePicture: true,
+          role: true,
+          permissions: true,
+          createdAt: true,
+        },
+      });
+
+      res.json({
+        message: "Profile updated successfully",
+        user: updatedUser,
+      });
+    } catch (error) {
+      console.error("Update profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 
 module.exports = router;

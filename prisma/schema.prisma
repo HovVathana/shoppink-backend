@@ -8,17 +8,18 @@ datasource db {
 }
 
 model User {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  password    String
-  name        String
-  role        UserRole  @default(STAFF)
-  permissions String[] // Array of permission strings
-  isActive    Boolean   @default(true)
-  lastLogin   DateTime?
-  createdBy   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  name           String
+  profilePicture String? // Cloudinary URL for profile picture
+  role           UserRole  @default(STAFF)
+  permissions    String[] // Array of permission strings
+  isActive       Boolean   @default(true)
+  lastLogin      DateTime?
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   // Relations
   createdOrders Order[] @relation("OrderCreator")
@@ -228,15 +229,17 @@ model Order {
   isPaid               Boolean    @default(false)
   isPrinted            Boolean    @default(false)
 
-  driverId        String?
-  createdBy       String?
-  orderSource     OrderSource @default(ADMIN)
-  paymentProofUrl String?
-  orderAt         DateTime    @default(now())
-  assignedAt      DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  driverId          String?
+  deletedDriverName String? // Store driver name when driver is deleted
+  createdBy         String?
+  orderSource       OrderSource @default(ADMIN)
+  paymentProofUrl   String?
+  orderAt           DateTime    @default(now())
+  assignedAt        DateTime?
+  completedAt       DateTime?
+  returnedAt        DateTime? // Track when order was marked as returned
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   // Relations
   driver     Driver?     @relation(fields: [driverId], references: [id])

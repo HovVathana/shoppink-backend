@@ -9,7 +9,7 @@ const {
   requireDeleteDrivers,
   requireDriversForOrders,
 } = require("../middleware/permissions");
-const { cacheMiddleware } = require("../middleware/cache");
+const { cacheMiddleware, clearCache } = require("../middleware/cache");
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -190,6 +190,9 @@ router.post("/", requireCreateDrivers, driverValidation, async (req, res) => {
       },
     });
 
+    // Clear driver cache
+    clearCache("/drivers");
+
     res.status(201).json({
       message: "Driver created successfully",
       driver,
@@ -232,6 +235,9 @@ router.put("/:id", requireEditDrivers, driverValidation, async (req, res) => {
       },
     });
 
+    // Clear driver cache
+    clearCache("/drivers");
+
     res.json({
       message: "Driver updated successfully",
       driver,
@@ -261,19 +267,28 @@ router.delete("/:id", requireDeleteDrivers, async (req, res) => {
       return res.status(404).json({ message: "Driver not found" });
     }
 
-    // Check if driver has orders
+    // Store the driver name in orders before deleting
+    // This allows us to display "Deleted Driver: [name]" after deletion
     if (existingDriver._count.orders > 0) {
-      return res.status(400).json({
-        message:
-          "Cannot delete driver that has assigned orders. Please reassign the orders first.",
+      await prisma.order.updateMany({
+        where: { driverId: id },
+        data: { deletedDriverName: existingDriver.name },
       });
     }
 
+    // Now delete the driver
+    // The driverId will be automatically set to null due to foreign key constraint
     await prisma.driver.delete({
       where: { id },
     });
 
-    res.json({ message: "Driver deleted successfully" });
+    // Clear driver cache
+    clearCache("/drivers");
+
+    res.json({ 
+      message: "Driver deleted successfully",
+      ordersAffected: existingDriver._count.orders
+    });
   } catch (error) {
     console.error("Delete driver error:", error);
     res.status(500).json({ message: "Internal server error" });
