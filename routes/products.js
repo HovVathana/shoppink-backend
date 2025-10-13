@@ -100,14 +100,10 @@ const productValidation = [
   body("bannerType")
     .optional()
     .isIn([
-      "info",
-      "success",
-      "warning",
-      "error",
-      "discount",
-      "new",
-      "sale",
-      "hot",
+      // New simplified types
+      "circle", "square", "rectangle", "tilted",
+      // Legacy types for backward compatibility
+      "info", "success", "warning", "error", "discount", "new", "sale", "hot"
     ])
     .withMessage("Invalid banner type"),
   body("originalPrice")

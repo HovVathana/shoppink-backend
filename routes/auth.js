@@ -187,8 +187,18 @@ router.put(
       .withMessage("Name must be at least 2 characters"),
     body("profilePicture")
       .optional()
-      .isURL()
-      .withMessage("Profile picture must be a valid URL"),
+      .custom((value) => {
+        // Allow empty string for removing profile picture
+        if (value === "") return true;
+        // Require valid URL for non-empty values
+        if (value && typeof value === 'string' && value.trim() !== '') {
+          const urlPattern = /^https?:\/\/.+/;
+          if (!urlPattern.test(value)) {
+            throw new Error('Profile picture must be a valid URL');
+          }
+        }
+        return true;
+      }),
   ],
   async (req, res) => {
     try {
@@ -229,6 +239,85 @@ router.put(
       });
     } catch (error) {
       console.error("Update profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// PUT /api/auth/change-password - Change user password
+router.put(
+  "/change-password",
+  authenticateToken,
+  [
+    body("currentPassword")
+      .notEmpty()
+      .withMessage("Current password is required"),
+    body("newPassword")
+      .isLength({ min: 6 })
+      .withMessage("New password must be at least 6 characters"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+      const userId = req.user.id;
+
+      // Get user with password
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          password: true,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Verify current password
+      const isCurrentPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+      
+      if (!isCurrentPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Check if new password is different from current
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+      if (isSamePassword) {
+        return res.status(400).json({ 
+          message: "New password must be different from current password" 
+        });
+      }
+
+      // Hash new password
+      const saltRounds = 12;
+      const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+
+      // Update user password
+      await prisma.user.update({
+        where: { id: userId },
+        data: { 
+          password: hashedNewPassword,
+          updatedAt: new Date()
+        },
+      });
+
+      res.json({
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      console.error("Change password error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
