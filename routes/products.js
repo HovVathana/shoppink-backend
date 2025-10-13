@@ -405,10 +405,6 @@ router.post(
           .json({ message: "Original price must be positive" });
       }
 
-      // Generate auto product ID
-      const productCount = await prisma.product.count();
-      const productId = `PROD-${String(productCount + 1).padStart(6, "0")}`;
-
       // Check if product name already exists
       const existingProduct = await prisma.product.findFirst({
         where: { name },
@@ -429,6 +425,11 @@ router.post(
         }
       }
 
+      // Generate unique SKU - use timestamp + random number to ensure uniqueness
+      const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const uniqueSku = `SKU-${timestamp}-${randomNum}`;
+
       const product = await prisma.product.create({
         data: {
           name,
@@ -440,7 +441,7 @@ router.post(
           delivery_price_for_province,
           categoryId,
           imageUrl,
-          sku: productId, // Use auto-generated product ID as SKU
+          sku: uniqueSku, // Use unique timestamp-based SKU
           isActive: isActiveBool,
           bannerText,
           bannerColor,
@@ -493,6 +494,14 @@ router.post(
       });
     } catch (error) {
       console.error("Create product error:", error);
+      
+      // Handle unique constraint failures
+      if (error.code === 'P2002') {
+        if (error.meta && error.meta.target && error.meta.target.includes('sku')) {
+          return res.status(409).json({ message: "SKU conflict occurred. Please try again." });
+        }
+      }
+      
       res.status(500).json({ message: "Internal server error" });
     }
   }
