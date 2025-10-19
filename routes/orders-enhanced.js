@@ -1290,10 +1290,7 @@ router.delete("/:id", requireDeleteOrders, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Restore stock if order was in DELIVERING state
-    if (existingOrder.state === "DELIVERING") {
-      await stockManagementService.restoreStockForOrder(id);
-    }
+    // Stock is NOT restored when deleting orders
 
     // Delete order in transaction
     await prisma.$transaction(async (prisma) => {

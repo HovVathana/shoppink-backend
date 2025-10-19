@@ -94,6 +94,7 @@ class HierarchicalStockService {
       const optionNodes = (group.options || []).map((opt) => ({
         id: opt.id,
         name: opt.name,
+        imageUrl: opt.imageUrl,
         type: "option",
         level: (group.level || 1) + 1,
         stock: opt.stock || 0,
@@ -109,6 +110,7 @@ class HierarchicalStockService {
       return {
         id: group.id,
         name: group.name,
+        imageUrl: group.imageUrl,
         type: "option-group",
         level: group.level || 1,
         stock,
@@ -157,6 +159,7 @@ class HierarchicalStockService {
         const optionNode = {
           id: option.id,
           name: option.name,
+          imageUrl: option.imageUrl,
           type: "option-group", // This option acts as a group
           level: group.level + 1,
           stock: 0,
@@ -182,6 +185,7 @@ class HierarchicalStockService {
       return {
         id: group.id,
         name: group.name,
+        imageUrl: group.imageUrl,
         type: "option-group",
         level: group.level,
         stock: children.reduce((sum, child) => sum + child.stock, 0),
@@ -198,6 +202,7 @@ class HierarchicalStockService {
       return {
         id: group.id,
         name: group.name,
+        imageUrl: group.imageUrl,
         type: "option-group",
         level: group.level,
         stock: children.reduce((sum, child) => sum + child.stock, 0),
@@ -209,6 +214,7 @@ class HierarchicalStockService {
     const children = group.options.map((option) => ({
       id: option.id,
       name: option.name,
+      imageUrl: option.imageUrl,
       type: "option",
       level: group.level + 1,
       stock: option.stock,
@@ -218,6 +224,7 @@ class HierarchicalStockService {
     return {
       id: group.id,
       name: group.name,
+      imageUrl: group.imageUrl,
       type: "option-group",
       level: group.level,
       stock: children.reduce((sum, child) => sum + child.stock, 0),
@@ -278,9 +285,19 @@ class HierarchicalStockService {
           variantId = stockData.variantId;
         }
 
+        // Get variant image for this option path, fallback to option image
+        let imageUrl = option.imageUrl;
+        if (variantId) {
+          const variant = variants.find(v => v.id === variantId);
+          if (variant && variant.imageUrl) {
+            imageUrl = variant.imageUrl;
+          }
+        }
+
         optionNodes.push({
           id: option.id,
           name: option.name,
+          imageUrl: imageUrl,
           type: "option", // Options are always type "option", regardless of whether they have children
           level: currentLevel + 1, // Options are one level deeper than their group
           stock: stock,
@@ -297,6 +314,7 @@ class HierarchicalStockService {
       groupNodes.push({
         id: group.id,
         name: group.name,
+        imageUrl: group.imageUrl,
         type: "option-group",
         level: currentLevel,
         stock: groupStock,
@@ -386,9 +404,16 @@ class HierarchicalStockService {
       const variantKey = optionIds.join("-");
       const variant = variantMap.get(variantKey);
 
+      // Use variant image if available, fallback to option image
+      let imageUrl = childOption.imageUrl;
+      if (variant && variant.imageUrl) {
+        imageUrl = variant.imageUrl;
+      }
+
       children.push({
         id: `${parentOption.id}_${childOption.id}`, // Create unique ID for each combination
         name: childOption.name,
+        imageUrl: imageUrl,
         type: "option",
         level: childGroup.level + 1,
         stock: variant ? variant.stock : 0,
@@ -400,6 +425,7 @@ class HierarchicalStockService {
     return {
       id: `${parentOption.id}_${childGroup.id}`,
       name: childGroup.name,
+      imageUrl: childGroup.imageUrl,
       type: "option-group",
       level: childGroup.level,
       stock: children.reduce((sum, child) => sum + child.stock, 0),
@@ -429,6 +455,7 @@ class HierarchicalStockService {
         const optionNode = {
           id: `${optionPath.map((o) => o.id).join("_")}_${childOption.id}`,
           name: childOption.name,
+          imageUrl: childOption.imageUrl,
           type: "option-group",
           level: childGroup.level + 1,
           stock: 0,
@@ -461,9 +488,16 @@ class HierarchicalStockService {
         const variantKey = allOptionIds.join("-");
         const variant = variantMap.get(variantKey);
 
+        // Use variant image if available, fallback to option image
+        let imageUrl = childOption.imageUrl;
+        if (variant && variant.imageUrl) {
+          imageUrl = variant.imageUrl;
+        }
+
         children.push({
           id: `${optionPath.map((o) => o.id).join("_")}_${childOption.id}`,
           name: childOption.name,
+          imageUrl: imageUrl,
           type: "option",
           level: childGroup.level + 1,
           stock: variant ? variant.stock : 0,
@@ -476,6 +510,7 @@ class HierarchicalStockService {
     return {
       id: `${optionPath.map((o) => o.id).join("_")}_${childGroup.id}`,
       name: childGroup.name,
+      imageUrl: childGroup.imageUrl,
       type: "option-group",
       level: childGroup.level,
       stock: children.reduce((sum, child) => sum + child.stock, 0),

@@ -36,20 +36,29 @@ router.get(
       const search = req.query.search;
       const category = req.query.category;
 
-      // Build where clause - only show active products
+      // Build where clause - only show active products and filter out products without options that have zero stock
       const where = {
         isActive: true,
+        // Filter out products without hierarchy (options) that have zero stock
+        OR: [
+          { hasOptions: true }, // Show all products with options
+          { AND: [{ hasOptions: false }, { quantity: { gt: 0 } }] }, // Show products without options only if stock > 0
+        ],
       };
 
       if (search) {
-        where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
-        ];
+        where.AND = where.AND || [];
+        where.AND.push({
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { description: { contains: search, mode: "insensitive" } },
+          ],
+        });
       }
 
       if (category) {
-        where.categoryId = category;
+        where.AND = where.AND || [];
+        where.AND.push({ categoryId: category });
       }
 
       // Get products with pagination
@@ -84,6 +93,7 @@ router.get(
                 id: true,
                 name: true,
                 description: true,
+                imageUrl: true,
                 selectionType: true,
                 isRequired: true,
                 sortOrder: true,
@@ -92,6 +102,7 @@ router.get(
                     id: true,
                     name: true,
                     description: true,
+                    imageUrl: true,
                     priceType: true,
                     priceValue: true,
                     isDefault: true,
@@ -167,6 +178,7 @@ router.get("/products/:id", async (req, res) => {
             id: true,
             name: true,
             description: true,
+            imageUrl: true,
             selectionType: true,
             isRequired: true,
             sortOrder: true,
@@ -175,6 +187,7 @@ router.get("/products/:id", async (req, res) => {
                 id: true,
                 name: true,
                 description: true,
+                imageUrl: true,
                 priceType: true,
                 priceValue: true,
                 isDefault: true,

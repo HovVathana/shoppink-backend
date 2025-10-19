@@ -157,22 +157,27 @@ router.get(
       const isActive = req.query.isActive;
 
       // Build where clause
-      const where = {};
+      const where = {}; // Show all products regardless of stock
 
       if (search) {
-        where.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
-          { sku: { contains: search, mode: "insensitive" } },
-        ];
+        where.AND = where.AND || [];
+        where.AND.push({
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { description: { contains: search, mode: "insensitive" } },
+            { sku: { contains: search, mode: "insensitive" } },
+          ],
+        });
       }
 
       if (category) {
-        where.categoryId = category;
+        where.AND = where.AND || [];
+        where.AND.push({ categoryId: category });
       }
 
       if (isActive !== undefined) {
-        where.isActive = isActive === "true";
+        where.AND = where.AND || [];
+        where.AND.push({ isActive: isActive === "true" });
       }
 
       // Get products with pagination
@@ -212,6 +217,22 @@ router.get(
                   },
                   orderBy: {
                     sortOrder: "asc",
+                  },
+                },
+              },
+              orderBy: {
+                sortOrder: "asc",
+              },
+            },
+            variants: {
+              include: {
+                variantOptions: {
+                  include: {
+                    option: {
+                      include: {
+                        optionGroup: true,
+                      },
+                    },
                   },
                 },
               },
@@ -280,6 +301,22 @@ router.get("/:id", requireProductsForOrders, async (req, res) => {
               },
               orderBy: {
                 sortOrder: "asc",
+              },
+            },
+          },
+          orderBy: {
+            sortOrder: "asc",
+          },
+        },
+        variants: {
+          include: {
+            variantOptions: {
+              include: {
+                option: {
+                  include: {
+                    optionGroup: true,
+                  },
+                },
               },
             },
           },

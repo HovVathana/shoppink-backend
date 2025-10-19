@@ -5,7 +5,11 @@ const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 // Performance optimization imports (simplified to avoid header conflicts)
-const { setupCompression, performanceLogger, requestTimeout } = require("./middleware/simple-performance");
+const {
+  setupCompression,
+  performanceLogger,
+  requestTimeout,
+} = require("./middleware/simple-performance");
 const { cacheMiddleware, getCacheStats } = require("./middleware/cache");
 
 const authRoutes = require("./routes/auth");
@@ -59,7 +63,7 @@ app.use(
       "http://192.168.100.138:3000",
       ...(process.env.NODE_ENV === "production"
         ? [
-            "https://shoppink-frontend.vercel.app",
+            "https://shoppink-ezcloud.vercel.app",
             process.env.FRONTEND_URL, // Add your actual frontend URL
           ].filter(Boolean)
         : []),
@@ -120,36 +124,36 @@ app.get("/api/health/cache", (req, res) => {
 app.get("/api/health", (req, res) => {
   const startTime = Date.now();
   const responseTime = Date.now() - startTime;
-  
+
   res.json({
     status: "OK",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
     serverless: !!process.env.VERCEL,
     responseTime: `${responseTime}ms`,
-    message: "Service is running"
+    message: "Service is running",
   });
 });
 
 // Database health check endpoint (separate for when needed)
 app.get("/api/health/database", async (req, res) => {
   const startTime = Date.now();
-  
+
   try {
     // Test database connection
     const getPrismaClient = require("./lib/prisma");
     const prisma = getPrismaClient();
-    
+
     // Simple database query to test connection with timeout
     const queryPromise = prisma.$queryRaw`SELECT 1`;
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Database query timeout')), 5000)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Database query timeout")), 5000)
     );
-    
+
     await Promise.race([queryPromise, timeoutPromise]);
-    
+
     const responseTime = Date.now() - startTime;
-    
+
     res.json({
       status: "OK",
       timestamp: new Date().toISOString(),
@@ -160,7 +164,7 @@ app.get("/api/health/database", async (req, res) => {
     });
   } catch (error) {
     const responseTime = Date.now() - startTime;
-    
+
     res.status(503).json({
       status: "ERROR",
       timestamp: new Date().toISOString(),
@@ -191,7 +195,7 @@ app.use("*", (req, res) => {
 });
 
 // Only start server if not in serverless environment
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);

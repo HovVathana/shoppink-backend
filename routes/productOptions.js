@@ -2,6 +2,8 @@ const express = require("express");
 const { body, validationResult, param } = require("express-validator");
 const getPrismaClient = require("../lib/prisma");
 const { authenticateToken } = require("../middleware/auth");
+const multer = require("multer");
+const { v2: cloudinary } = require("cloudinary");
 const {
   requireCreateProducts,
   requireEditProducts,
@@ -9,6 +11,53 @@ const {
 } = require("../middleware/permissions");
 
 const hierarchicalStockService = require("../services/hierarchicalStockService");
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"), false);
+    }
+  },
+});
+
+// Upload image to Cloudinary
+const uploadToCloudinary = (buffer, originalname) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "image",
+        folder: "product-options",
+        public_id: `option-${Date.now()}-${originalname.split(".")[0]}`,
+        transformation: [
+          { width: 800, height: 800, crop: "limit" },
+          { quality: "auto" },
+        ],
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result.secure_url);
+        }
+      }
+    );
+    uploadStream.end(buffer);
+  });
+};
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -26,9 +75,54 @@ router.get("/:productId/groups", async (req, res) => {
       include: {
         options: {
           orderBy: { sortOrder: "asc" },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            imageUrl: true,
+            priceType: true,
+            priceValue: true,
+            isDefault: true,
+            isAvailable: true,
+            stock: true,
+            sortOrder: true,
+          },
         },
-        parentGroup: true,
-        childGroups: true,
+        parentGroup: {
+          select: {
+            id: true,
+            name: true,
+            imageUrl: true,
+          },
+        },
+        childGroups: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            imageUrl: true,
+            selectionType: true,
+            isRequired: true,
+            sortOrder: true,
+            level: true,
+            options: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                imageUrl: true,
+                priceType: true,
+                priceValue: true,
+                isDefault: true,
+                isAvailable: true,
+                stock: true,
+                sortOrder: true,
+              },
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
       },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
     });
@@ -51,6 +145,10 @@ const optionGroupValidation = [
     .trim()
     .isLength({ max: 500 })
     .withMessage("Description must not exceed 500 characters"),
+  body("imageUrl")
+    .optional()
+    .isURL()
+    .withMessage("Image URL must be a valid URL"),
   body("selectionType")
     .isIn(["SINGLE", "MULTIPLE"])
     .withMessage("Selection type must be SINGLE or MULTIPLE"),
@@ -87,6 +185,10 @@ const optionValidation = [
     .trim()
     .isLength({ max: 500 })
     .withMessage("Description must not exceed 500 characters"),
+  body("imageUrl")
+    .optional()
+    .isURL()
+    .withMessage("Image URL must be a valid URL"),
   body("priceType")
     .isIn(["FREE", "BASE", "FIXED", "PERCENTAGE"])
     .withMessage("Price type must be FREE, BASE, FIXED, or PERCENTAGE"),
@@ -133,6 +235,7 @@ const optionValidation = [
 // POST /api/product-options/:productId/groups - Create option group
 router.post(
   "/:productId/groups",
+  upload.single("image"),
   requireCreateProducts,
   [
     param("productId").isString().withMessage("Product ID is required"),
@@ -159,6 +262,22 @@ router.post(
         isParent,
         level,
       } = req.body;
+
+      // Handle image upload
+      let imageUrl = null;
+      if (req.file) {
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload option group image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      }
 
       // Check if product exists
       const product = await prisma.product.findUnique({
@@ -198,6 +317,7 @@ router.post(
           productId,
           name,
           description,
+          imageUrl,
           selectionType,
           isRequired: isRequiredBool,
           sortOrder: sortOrderNum,
@@ -229,6 +349,7 @@ router.post(
 // POST /api/product-options/groups/:groupId/options - Create option
 router.post(
   "/groups/:groupId/options",
+  upload.single("image"),
   requireCreateProducts,
   [
     param("groupId").isString().withMessage("Option group ID is required"),
@@ -256,6 +377,22 @@ router.post(
         sortOrder,
       } = req.body;
 
+      // Handle image upload
+      let imageUrl = null;
+      if (req.file) {
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload option image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      }
+
       // Check if option group exists
       const optionGroup = await prisma.productOptionGroup.findUnique({
         where: { id: groupId },
@@ -278,6 +415,7 @@ router.post(
           optionGroupId: groupId,
           name,
           description,
+          imageUrl,
           priceType,
           priceValue: priceValueNum,
           isDefault: isDefaultBool,
@@ -298,6 +436,7 @@ router.post(
 // PUT /api/product-options/groups/:groupId - Update option group
 router.put(
   "/groups/:groupId",
+  upload.single("image"),
   requireEditProducts,
   [
     param("groupId").isString().withMessage("Option group ID is required"),
@@ -324,6 +463,22 @@ router.put(
         isParent,
         level,
       } = req.body;
+
+      // Handle image upload (optional for updates)
+      let imageUrl = undefined;
+      if (req.file) {
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload option group image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      }
 
       // Check if option group exists
       const existingGroup = await prisma.productOptionGroup.findUnique({
@@ -365,18 +520,25 @@ router.put(
       }
 
       // Update option group
+      const updateData = {
+        name,
+        description,
+        selectionType,
+        isRequired: isRequiredBool,
+        sortOrder: sortOrderNum,
+        parentGroupId: parentGroupId || null,
+        isParent: isParentBool,
+        level: levelNum,
+      };
+      
+      // Only update imageUrl if a new image was uploaded
+      if (imageUrl !== undefined) {
+        updateData.imageUrl = imageUrl;
+      }
+
       const optionGroup = await prisma.productOptionGroup.update({
         where: { id: groupId },
-        data: {
-          name,
-          description,
-          selectionType,
-          isRequired: isRequiredBool,
-          sortOrder: sortOrderNum,
-          parentGroupId: parentGroupId || null,
-          isParent: isParentBool,
-          level: levelNum,
-        },
+        data: updateData,
         include: {
           options: {
             orderBy: { sortOrder: "asc" },
@@ -395,6 +557,7 @@ router.put(
 // PUT /api/products/options/:optionId - Update option
 router.put(
   "/options/:optionId",
+  upload.single("image"),
   requireEditProducts,
   [
     param("optionId").isString().withMessage("Option ID is required"),
@@ -431,6 +594,22 @@ router.put(
         return res.status(404).json({ message: "Option not found" });
       }
 
+      // Handle image upload (optional for updates)
+      let imageUrl = undefined;
+      if (req.file) {
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload option image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      }
+
       // Convert string values to proper types
       const isDefaultBool = isDefault === "true" || isDefault === true;
       const isAvailableBool = isAvailable !== "false" && isAvailable !== false;
@@ -439,23 +618,100 @@ router.put(
       const priceValueNum = priceValue ? parseFloat(priceValue) : null;
 
       // Update option
+      const updateData = {
+        name,
+        description,
+        priceType,
+        priceValue: priceValueNum,
+        isDefault: isDefaultBool,
+        isAvailable: isAvailableBool,
+        stock: stockNum,
+        sortOrder: sortOrderNum,
+      };
+      
+      // Only update imageUrl if a new image was uploaded
+      if (imageUrl !== undefined) {
+        updateData.imageUrl = imageUrl;
+      }
+
       const option = await prisma.productOption.update({
         where: { id: optionId },
-        data: {
-          name,
-          description,
-          priceType,
-          priceValue: priceValueNum,
-          isDefault: isDefaultBool,
-          isAvailable: isAvailableBool,
-          stock: stockNum,
-          sortOrder: sortOrderNum,
-        },
+        data: updateData,
       });
 
       res.json({ option });
     } catch (error) {
       console.error("Update option error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// PUT /api/products/variants/:variantId/image - Update variant image
+router.put(
+  "/variants/:variantId/image",
+  upload.single("image"),
+  requireEditProducts,
+  [param("variantId").isString().withMessage("Variant ID is required")],
+  async (req, res) => {
+    console.log('🖼️ Variant image route called:', {
+      method: req.method,
+      url: req.url,
+      variantId: req.params.variantId,
+      hasFile: !!req.file,
+      removeImage: req.body.removeImage
+    });
+    
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
+      }
+
+      const { variantId } = req.params;
+      const { removeImage } = req.body;
+
+      // Check if variant exists
+      const existingVariant = await prisma.productVariant.findUnique({
+        where: { id: variantId },
+      });
+
+      if (!existingVariant) {
+        return res.status(404).json({ message: "Variant not found" });
+      }
+
+      let imageUrl = undefined;
+      
+      if (removeImage === 'true') {
+        // Remove the image
+        imageUrl = null;
+      } else if (req.file) {
+        // Upload new image
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload variant image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      }
+
+      // Update variant image
+      const variant = await prisma.productVariant.update({
+        where: { id: variantId },
+        data: { imageUrl },
+      });
+
+      res.json({ variant });
+    } catch (error) {
+      console.error("Update variant image error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
@@ -710,6 +966,120 @@ router.put(
       res.json({ variant });
     } catch (error) {
       console.error("Update variant stock error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// PUT /api/product-options/groups/:groupId/image - Update option group image only
+router.put(
+  "/groups/:groupId/image",
+  upload.single("image"),
+  requireEditProducts,
+  [param("groupId").isString().withMessage("Option group ID is required")],
+  async (req, res) => {
+    try {
+      const { groupId } = req.params;
+
+      // Check if option group exists
+      const existingGroup = await prisma.productOptionGroup.findUnique({
+        where: { id: groupId },
+      });
+
+      if (!existingGroup) {
+        return res.status(404).json({ message: "Option group not found" });
+      }
+
+      // Handle image upload
+      let imageUrl = null;
+      if (req.file) {
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload option group image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      } else if (req.body.removeImage === 'true') {
+        // If removeImage flag is set, set imageUrl to null
+        imageUrl = null;
+      } else {
+        return res.status(400).json({ message: "No image provided" });
+      }
+
+      // Update only the imageUrl
+      const optionGroup = await prisma.productOptionGroup.update({
+        where: { id: groupId },
+        data: { imageUrl },
+      });
+
+      res.json({ 
+        message: imageUrl ? "Image updated successfully" : "Image removed successfully",
+        optionGroup 
+      });
+    } catch (error) {
+      console.error("Update option group image error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// PUT /api/product-options/options/:optionId/image - Update option image only
+router.put(
+  "/options/:optionId/image",
+  upload.single("image"),
+  requireEditProducts,
+  [param("optionId").isString().withMessage("Option ID is required")],
+  async (req, res) => {
+    try {
+      const { optionId } = req.params;
+
+      // Check if option exists
+      const existingOption = await prisma.productOption.findUnique({
+        where: { id: optionId },
+      });
+
+      if (!existingOption) {
+        return res.status(404).json({ message: "Option not found" });
+      }
+
+      // Handle image upload
+      let imageUrl = null;
+      if (req.file) {
+        try {
+          imageUrl = await uploadToCloudinary(
+            req.file.buffer,
+            req.file.originalname
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload option image:", uploadError);
+          return res.status(500).json({
+            message: "Failed to upload image",
+          });
+        }
+      } else if (req.body.removeImage === 'true') {
+        // If removeImage flag is set, set imageUrl to null
+        imageUrl = null;
+      } else {
+        return res.status(400).json({ message: "No image provided" });
+      }
+
+      // Update only the imageUrl
+      const option = await prisma.productOption.update({
+        where: { id: optionId },
+        data: { imageUrl },
+      });
+
+      res.json({ 
+        message: imageUrl ? "Image updated successfully" : "Image removed successfully",
+        option 
+      });
+    } catch (error) {
+      console.error("Update option image error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }

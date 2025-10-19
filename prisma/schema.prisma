@@ -83,6 +83,7 @@ model ProductOptionGroup {
   productId     String
   name          String // e.g., "Size", "Color", "Material", "Finish"
   description   String?
+  imageUrl      String? // Optional fallback image for all options in this group
   selectionType String  @default("SINGLE") // "SINGLE" or "MULTIPLE"
   isRequired    Boolean @default(false)
   sortOrder     Int     @default(0)
@@ -114,6 +115,7 @@ model ProductOption {
   optionGroupId String
   name          String // e.g., "Small", "Large", "Red", "Blue"
   description   String?
+  imageUrl      String? // Optional image for the option (e.g., color swatches, product variants)
   priceType     String   @default("BASE") // "FREE", "BASE", "FIXED", "PERCENTAGE"
   priceValue    Float? // For FIXED (amount to add) or PERCENTAGE (percentage to add)
   isDefault     Boolean  @default(false)
@@ -137,6 +139,7 @@ model ProductVariant {
   productId       String
   name            String // e.g., "Small White Cotton Glossy"
   sku             String? // Unique SKU for this variant
+  imageUrl        String? // Image specific to this variant combination
   stock           Int     @default(0)
   priceAdjustment Float   @default(0) // Additional price for this variant
   isActive        Boolean @default(true)
