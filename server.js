@@ -63,7 +63,7 @@ app.use(
       "http://192.168.100.138:3000",
       ...(process.env.NODE_ENV === "production"
         ? [
-            "https://shoppink-ezcloud.vercel.app",
+            "https://ezcloud-shoppink.vercel.app",
             process.env.FRONTEND_URL, // Add your actual frontend URL
           ].filter(Boolean)
         : []),
