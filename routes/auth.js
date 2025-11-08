@@ -37,76 +37,76 @@ const generateToken = (userId) => {
 };
 
 // POST /api/auth/signup
-router.post("/signup", signupValidation, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
+// router.post("/signup", signupValidation, async (req, res) => {
+//   try {
+//     const errors = validationResult(req);
+//     if (!errors.isEmpty()) {
+//       return res.status(400).json({
+//         message: "Validation failed",
+//         errors: errors.array(),
+//       });
+//     }
 
-    const { email, password, name } = req.body;
+//     const { email, password, name } = req.body;
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+//     // Check if user already exists
+//     const existingUser = await prisma.user.findUnique({
+//       where: { email },
+//     });
 
-    if (existingUser) {
-      return res
-        .status(409)
-        .json({ message: "User with this email already exists" });
-    }
+//     if (existingUser) {
+//       return res
+//         .status(409)
+//         .json({ message: "User with this email already exists" });
+//     }
 
-    // Hash password
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+//     // Hash password
+//     const saltRounds = 12;
+//     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Create user with ADMIN role (for signup)
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        role: "ADMIN",
-        permissions: [
-          "view_dashboard",
-          "view_products",
-          "create_products",
-          "edit_products",
-          "delete_products",
-          "view_orders",
-          "create_orders",
-          "edit_orders",
-          "delete_orders",
-        ],
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        profilePicture: true,
-        role: true,
-        permissions: true,
-        createdAt: true,
-      },
-    });
+//     // Create user with ADMIN role (for signup)
+//     const user = await prisma.user.create({
+//       data: {
+//         email,
+//         password: hashedPassword,
+//         name,
+//         role: "ADMIN",
+//         permissions: [
+//           "view_dashboard",
+//           "view_products",
+//           "create_products",
+//           "edit_products",
+//           "delete_products",
+//           "view_orders",
+//           "create_orders",
+//           "edit_orders",
+//           "delete_orders",
+//         ],
+//       },
+//       select: {
+//         id: true,
+//         email: true,
+//         name: true,
+//         profilePicture: true,
+//         role: true,
+//         permissions: true,
+//         createdAt: true,
+//       },
+//     });
 
-    // Generate token
-    const token = generateToken(user.id);
+//     // Generate token
+//     const token = generateToken(user.id);
 
-    res.status(201).json({
-      message: "User created successfully",
-      user,
-      token,
-    });
-  } catch (error) {
-    console.error("Signup error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
+//     res.status(201).json({
+//       message: "User created successfully",
+//       user,
+//       token,
+//     });
+//   } catch (error) {
+//     console.error("Signup error:", error);
+//     res.status(500).json({ message: "Internal server error" });
+//   }
+// });
 
 // POST /api/auth/login
 router.post("/login", loginValidation, async (req, res) => {
@@ -191,10 +191,10 @@ router.put(
         // Allow empty string for removing profile picture
         if (value === "") return true;
         // Require valid URL for non-empty values
-        if (value && typeof value === 'string' && value.trim() !== '') {
+        if (value && typeof value === "string" && value.trim() !== "") {
           const urlPattern = /^https?:\/\/.+/;
           if (!urlPattern.test(value)) {
-            throw new Error('Profile picture must be a valid URL');
+            throw new Error("Profile picture must be a valid URL");
           }
         }
         return true;
@@ -216,7 +216,8 @@ router.put(
       // Build update data object
       const updateData = {};
       if (name !== undefined) updateData.name = name;
-      if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
+      if (profilePicture !== undefined)
+        updateData.profilePicture = profilePicture;
 
       // Update user
       const updatedUser = await prisma.user.update({
@@ -287,16 +288,18 @@ router.put(
         currentPassword,
         user.password
       );
-      
+
       if (!isCurrentPasswordValid) {
-        return res.status(400).json({ message: "Current password is incorrect" });
+        return res
+          .status(400)
+          .json({ message: "Current password is incorrect" });
       }
 
       // Check if new password is different from current
       const isSamePassword = await bcrypt.compare(newPassword, user.password);
       if (isSamePassword) {
-        return res.status(400).json({ 
-          message: "New password must be different from current password" 
+        return res.status(400).json({
+          message: "New password must be different from current password",
         });
       }
 
@@ -307,9 +310,9 @@ router.put(
       // Update user password
       await prisma.user.update({
         where: { id: userId },
-        data: { 
+        data: {
           password: hashedNewPassword,
-          updatedAt: new Date()
+          updatedAt: new Date(),
         },
       });
 
