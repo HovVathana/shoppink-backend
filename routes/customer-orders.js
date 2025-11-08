@@ -415,7 +415,7 @@ router.get(
       .withMessage("Limit must be between 1 and 5000"),
     query("state")
       .optional()
-      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED"]),
+      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
     query("search").optional().trim(),
     query("sortBy")
       .optional()

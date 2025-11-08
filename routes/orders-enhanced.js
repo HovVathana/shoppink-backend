@@ -38,7 +38,7 @@ const orderValidation = [
   body("remark").optional().trim(),
   body("state")
     .optional()
-    .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED"]),
+    .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
   body("subtotalPrice")
     .isFloat({ min: 0 })
     .withMessage("Subtotal price must be positive"),
@@ -80,7 +80,7 @@ router.get(
       .withMessage("Limit must be between 1 and 5000"),
     query("state")
       .optional()
-      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED"]),
+      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
     query("search").optional().trim(),
     query("sortBy")
       .optional()
@@ -790,7 +790,7 @@ router.put(
   requireEditOrders,
   [
     body("state")
-      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED"])
+      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"])
       .withMessage("Invalid state"),
   ],
   async (req, res) => {
@@ -813,6 +813,13 @@ router.put(
 
       if (!existingOrder) {
         return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Prevent changing from CANCELLED to DELIVERING
+      if (existingOrder.state === "CANCELLED" && state === "DELIVERING") {
+        return res.status(400).json({
+          message: "Cannot change a cancelled order to delivering",
+        });
       }
 
       const updateData = { state };
@@ -904,6 +911,13 @@ router.put(
 
       if (!existingOrder) {
         return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Prevent assigning driver to cancelled orders (would change state to DELIVERING)
+      if (existingOrder.state === "CANCELLED" && driverId !== null && driverId !== undefined) {
+        return res.status(400).json({
+          message: "Cannot assign driver to a cancelled order",
+        });
       }
 
       // Validate driver if provided (not null)

@@ -99,7 +99,7 @@ const generateMoreOrders = () => {
     "Kampong Cham",
     "Kandal",
   ];
-  const states = ["PLACED", "DELIVERING", "COMPLETED", "RETURNED"];
+  const states = ["PLACED", "DELIVERING", "COMPLETED", "RETURNED", "CANCELLED"];
   const products = [
     "T-Shirt",
     "Jeans",

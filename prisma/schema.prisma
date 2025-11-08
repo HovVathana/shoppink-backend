@@ -289,6 +289,7 @@ enum OrderState {
   DELIVERING
   RETURNED
   COMPLETED
+  CANCELLED
 }
 
 enum OrderStatus {

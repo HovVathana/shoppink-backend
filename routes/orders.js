@@ -30,7 +30,7 @@ const orderValidation = [
   body("remark").optional().trim(),
   body("state")
     .optional()
-    .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED"]),
+    .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
   body("subtotalPrice")
     .isFloat({ min: 0 })
     .withMessage("Subtotal price must be positive"),
@@ -70,7 +70,7 @@ router.get(
       .withMessage("Limit must be between 1 and 100"),
     query("state")
       .optional()
-      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED"]),
+      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
     query("search").optional().trim(),
   ],
   async (req, res) => {
