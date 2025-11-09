@@ -215,6 +215,7 @@ model Driver {
 enum OrderSource {
   ADMIN
   CUSTOMER
+  PICKUP
 }
 
 model Order {

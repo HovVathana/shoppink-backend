@@ -10,6 +10,53 @@ const {
 } = require("../middleware/permissions");
 const stockManagementService = require("../services/stockManagementService");
 const { cacheMiddleware } = require("../middleware/cache");
+const multer = require("multer");
+const { v2: cloudinary } = require("cloudinary");
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"), false);
+    }
+  },
+});
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Helper function to upload to Cloudinary
+const uploadToCloudinary = (buffer, originalname, folder = "pickup-proofs") => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "image",
+        folder: folder,
+        public_id: `proof-${Date.now()}-${originalname.split(".")[0]}`,
+        transformation: [
+          { width: 800, height: 800, crop: "limit" },
+          { quality: "auto" },
+        ],
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result.secure_url);
+        }
+      }
+    );
+    uploadStream.end(buffer);
+  });
+};
 
 const router = express.Router();
 const prisma = getPrismaClient();
@@ -53,6 +100,7 @@ const orderValidation = [
     .withMessage("Total price must be positive"),
   body("isPaid").optional().isBoolean(),
   body("driverId").optional({ nullable: true }).isString(),
+  body("orderSource").optional().isIn(["ADMIN", "CUSTOMER", "PICKUP"]),
   body("products")
     .isArray({ min: 1 })
     .withMessage("At least one product is required"),
@@ -102,6 +150,7 @@ router.get(
       .matches(/^\d{4}-\d{2}-\d{2}$/),
     query("assignedOnly").optional().isBoolean(),
     query("allSources").optional().isBoolean(),
+    query("orderSource").optional().isIn(["ADMIN", "CUSTOMER", "PICKUP"]),
   ],
   async (req, res) => {
     try {
@@ -124,6 +173,7 @@ router.get(
       const dateTo = req.query.dateTo;
       const assignedOnly = req.query.assignedOnly === "true";
       const allSources = req.query.allSources === "true";
+      const orderSource = req.query.orderSource;
 
       // Prevent large queries without date filtering
       if (limit > 500 && !dateFrom && !dateTo) {
@@ -136,10 +186,14 @@ router.get(
       // Build where clause
       const where = {};
 
-      // Only filter by orderSource if not fetching assigned orders or all sources
+      // Handle orderSource filtering
+      // 1. If orderSource param is provided, use it explicitly (for pickup-orders page)
+      // 2. Otherwise, only filter by orderSource if not fetching assigned orders or all sources
       // When assignedOnly is true, we want all orders (ADMIN + CUSTOMER) that have assignedAt
       // When allSources is true, we want all orders regardless of source (for dashboard)
-      if (!assignedOnly && !allSources) {
+      if (orderSource) {
+        where.orderSource = orderSource; // Explicit filter (e.g., PICKUP for pickup-orders page)
+      } else if (!assignedOnly && !allSources) {
         where.orderSource = "ADMIN"; // Only admin created orders for regular orders page
       }
 
@@ -349,6 +403,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
       totalPrice: totalPriceStr,
       isPaid: isPaidRaw,
       driverId,
+      orderSource = "ADMIN",
       products,
     } = req.body;
 
@@ -638,6 +693,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
                 totalPrice,
                 isPaid,
                 driverId,
+                orderSource,
                 createdBy: req.user.id,
                 assignedAt: driverId ? new Date() : null,
               },
@@ -822,6 +878,13 @@ router.put(
         });
       }
 
+      // Prevent changing PICKUP orders to DELIVERING
+      if (existingOrder.orderSource === "PICKUP" && state === "DELIVERING") {
+        return res.status(400).json({
+          message: "Cannot change a pickup order to delivering. Pickup orders can only be PLACED, COMPLETED, or CANCELLED.",
+        });
+      }
+
       const updateData = { state };
 
       // Set completion time if state is COMPLETED
@@ -917,6 +980,13 @@ router.put(
       if (existingOrder.state === "CANCELLED" && driverId !== null && driverId !== undefined) {
         return res.status(400).json({
           message: "Cannot assign driver to a cancelled order",
+        });
+      }
+
+      // Prevent assigning driver to PICKUP orders
+      if (existingOrder.orderSource === "PICKUP" && driverId !== null && driverId !== undefined) {
+        return res.status(400).json({
+          message: "Cannot assign driver to a pickup order. Pickup orders are for walk-in customers.",
         });
       }
 
@@ -1059,6 +1129,7 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
       totalPrice: totalPriceStr,
       isPaid: isPaidRaw,
       driverId,
+      orderSource,
       products,
     } = req.body;
 
@@ -1150,27 +1221,30 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
       });
 
       // Update order
+      const orderUpdateData = {
+        customerName,
+        customerPhone,
+        customerLocation,
+        province,
+        remark,
+        state,
+        subtotalPrice,
+        companyDeliveryPrice,
+        deliveryPrice,
+        totalPrice,
+        isPaid,
+        driverId: driverId || null,
+        ...(orderSource && { orderSource }),
+        updatedAt: new Date(),
+        ...(state === "DELIVERING" &&
+          !existingOrder.assignedAt && { assignedAt: new Date() }),
+        ...(state === "COMPLETED" &&
+          !existingOrder.completedAt && { completedAt: new Date() }),
+      };
+
       const updatedOrder = await prisma.order.update({
         where: { id },
-        data: {
-          customerName,
-          customerPhone,
-          customerLocation,
-          province,
-          remark,
-          state,
-          subtotalPrice,
-          companyDeliveryPrice,
-          deliveryPrice,
-          totalPrice,
-          isPaid,
-          driverId: driverId || null,
-          updatedAt: new Date(),
-          ...(state === "DELIVERING" &&
-            !existingOrder.assignedAt && { assignedAt: new Date() }),
-          ...(state === "COMPLETED" &&
-            !existingOrder.completedAt && { completedAt: new Date() }),
-        },
+        data: orderUpdateData,
       });
 
       // Helper to resolve variant by selected option IDs
@@ -1447,6 +1521,83 @@ router.put(
       });
     } catch (error) {
       console.error("Reset print status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// POST /api/orders/:id/pickup-proof - Upload pickup proof image
+router.post(
+  "/:id/pickup-proof",
+  requireEditOrders,
+  upload.single("proofImage"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Check if order exists and is a pickup order
+      const order = await prisma.order.findUnique({
+        where: { id },
+      });
+
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (order.orderSource !== "PICKUP") {
+        return res.status(400).json({
+          message: "Only pickup orders can have proof images uploaded",
+        });
+      }
+
+      // Check if file was provided
+      if (!req.file) {
+        return res.status(400).json({ message: "No proof image provided" });
+      }
+
+      // Upload to Cloudinary
+      let paymentProofUrl;
+      try {
+        paymentProofUrl = await uploadToCloudinary(
+          req.file.buffer,
+          req.file.originalname
+        );
+      } catch (uploadError) {
+        console.error("Cloudinary upload error:", uploadError);
+        return res.status(500).json({ message: "Failed to upload proof image" });
+      }
+
+      // Update order with proof URL
+      const updatedOrder = await prisma.order.update(
+        {
+          where: { id },
+          data: { paymentProofUrl },
+          include: {
+            driver: true,
+            creator: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+            orderItems: {
+              include: {
+                product: true,
+              },
+            },
+          },
+        }
+      );
+
+      res.json({
+        message: "Proof image uploaded successfully",
+        order: updatedOrder,
+        proofUrl: paymentProofUrl,
+      });
+    } catch (error) {
+      console.error("Upload pickup proof error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   }
