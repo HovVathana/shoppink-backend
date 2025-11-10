@@ -1403,7 +1403,7 @@ router.delete("/:id", requireDeleteOrders, async (req, res) => {
 // PUT /api/orders/:id/mark-printed - Mark order as printed
 router.put(
   "/:id/mark-printed",
-  requireEditOrders,
+  requireViewOrders,
   [
     body("isPrinted")
       .isBoolean()
@@ -1466,7 +1466,7 @@ router.put(
 // PUT /api/orders/:id/reset-print - Reset print status of order
 router.put(
   "/:id/reset-print",
-  requireEditOrders,
+  requireViewOrders,
   [
     body("isPrinted")
       .isBoolean()
