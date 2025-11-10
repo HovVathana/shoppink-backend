@@ -27,6 +27,9 @@ const blacklistPhoneRoutes = require("./routes/blacklist-phones");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy - required for Vercel and other proxies/load balancers
+app.set('trust proxy', 1);
+
 // Performance middleware (safe versions to avoid header conflicts)
 app.use(setupCompression());
 app.use(performanceLogger()); // Logging-only performance monitoring
