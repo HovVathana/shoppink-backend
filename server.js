@@ -35,54 +35,86 @@ app.use(requestTimeout(25000)); // 25 seconds for Vercel compatibility
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
+// Rate limiting with CORS-friendly error handler
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Increased limit for development
+  max: 2000, // High limit for production use
   message: "Too many requests from this IP, please try again later.",
+  handler: (req, res) => {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.status(429).json({
+      message: "Too many requests from this IP, please try again later.",
+    });
+  },
 });
 app.use("/api/", limiter);
 
-// More lenient rate limiting for orders endpoint during development
+// More lenient rate limiting for orders endpoint
 const ordersLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 30, // 30 requests per minute for orders
+  max: 100, // 100 requests per minute for orders
   message: "Too many order requests, please wait a moment.",
+  handler: (req, res) => {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.status(429).json({
+      message: "Too many order requests, please wait a moment.",
+    });
+  },
 });
 app.use("/api/orders", ordersLimiter);
 
 // Note: Selective caching applied directly in route handlers to avoid middleware conflicts
 
 // Enhanced CORS configuration
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3000",
-      "http://172.20.10.2:3000",
-      "http://localhost:8000",
-      "http://192.168.100.138:3000",
-      ...(process.env.NODE_ENV === "production"
-        ? [
-            "https://shoppink-store.vercel.app",
-            process.env.FRONTEND_URL, // Add your actual frontend URL
-          ].filter(Boolean)
-        : []),
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-    ],
-    exposedHeaders: ["Content-Range", "X-Content-Range"],
-    maxAge: 86400, // Cache preflight requests for 24 hours
-  })
-);
+const corsOptions = {
+  origin: [
+    "http://localhost:3000",
+    "http://172.20.10.2:3000",
+    "http://localhost:8000",
+    "http://192.168.100.138:3000",
+    ...(process.env.NODE_ENV === "production"
+      ? [
+          "https://shoppink-store.vercel.app",
+          process.env.FRONTEND_URL, // Add your actual frontend URL
+        ].filter(Boolean)
+      : []),
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+  ],
+  exposedHeaders: ["Content-Range", "X-Content-Range"],
+  maxAge: 86400, // Cache preflight requests for 24 hours
+};
 
-// Handle preflight requests
-app.options("*", cors());
+app.use(cors(corsOptions));
+
+// Handle preflight requests with same config
+app.options("*", cors(corsOptions));
+
+// Smart caching strategy
+app.use((req, res, next) => {
+  // Allow caching for GET requests (read operations)
+  if (req.method === 'GET') {
+    res.set({
+      'Cache-Control': 'public, max-age=60', // Cache GET for 1 minute
+    });
+  } else {
+    // Don't cache mutations (POST, PUT, DELETE, PATCH)
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+  }
+  next();
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
@@ -177,11 +209,23 @@ app.get("/api/health/database", async (req, res) => {
   }
 });
 
-// Error handling middleware
+// Error handling middleware with CORS
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({
-    message: "Something went wrong!",
+  
+  // Ensure CORS headers are set on error responses
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Credentials", "true");
+  
+  // Never cache error responses
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+  
+  res.status(err.status || 500).json({
+    message: err.message || "Something went wrong!",
     error:
       process.env.NODE_ENV === "development"
         ? err.message
