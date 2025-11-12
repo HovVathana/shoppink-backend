@@ -62,6 +62,7 @@ model Product {
   originalPrice               Float?
   isOnSale                    Boolean  @default(false)
   hasOptions                  Boolean  @default(false)
+  note                        String? // Small note for marking/tracking product info
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 

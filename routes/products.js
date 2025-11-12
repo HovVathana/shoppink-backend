@@ -364,6 +364,7 @@ router.post(
         delivery_price_for_province: deliveryProvinceStr,
         categoryId,
         isActive = true,
+        note,
         bannerText,
         bannerColor = "blue",
         bannerType = "info",
@@ -476,6 +477,7 @@ router.post(
           imageUrl,
           sku: uniqueSku, // Use unique timestamp-based SKU
           isActive: isActiveBool,
+          note,
           bannerText,
           bannerColor,
           bannerType,
@@ -567,6 +569,7 @@ router.put(
         delivery_price_for_province: deliveryProvinceStr,
         categoryId,
         isActive,
+        note,
         bannerText,
         bannerColor,
         bannerType,
@@ -691,6 +694,7 @@ router.put(
           categoryId,
           imageUrl,
           isActive: isActiveBool,
+          note,
           bannerText,
           bannerColor,
           bannerType,
@@ -746,6 +750,41 @@ router.put(
     }
   }
 );
+
+// PATCH /api/products/:id/note - Update only product note
+router.patch("/:id/note", requireEditProducts, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+
+    // Check if product exists
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+    });
+
+    if (!existingProduct) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // Update only the note field
+    const product = await prisma.product.update({
+      where: { id },
+      data: { note },
+      select: {
+        id: true,
+        note: true,
+      },
+    });
+
+    res.json({
+      message: "Product note updated successfully",
+      product,
+    });
+  } catch (error) {
+    console.error("Update product note error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 // DELETE /api/products/:id - Delete product
 router.delete("/:id", requireDeleteProducts, async (req, res) => {

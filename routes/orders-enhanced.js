@@ -1401,9 +1401,9 @@ router.delete("/:id", requireDeleteOrders, async (req, res) => {
 });
 
 // PUT /api/orders/:id/mark-printed - Mark order as printed
+// Note: No permission check - anyone can mark orders as printed
 router.put(
   "/:id/mark-printed",
-  requireViewOrders,
   [
     body("isPrinted")
       .isBoolean()
@@ -1464,9 +1464,10 @@ router.put(
 );
 
 // PUT /api/orders/:id/reset-print - Reset print status of order
+// Note: Requires edit_orders permission to reset print status
 router.put(
   "/:id/reset-print",
-  requireViewOrders,
+  requireEditOrders,
   [
     body("isPrinted")
       .isBoolean()
@@ -1527,9 +1528,9 @@ router.put(
 );
 
 // POST /api/orders/:id/pickup-proof - Upload pickup proof image
+// Note: No permission check - anyone can upload proof for pickup orders
 router.post(
   "/:id/pickup-proof",
-  requireEditOrders,
   upload.single("proofImage"),
   async (req, res) => {
     try {
@@ -1567,11 +1568,15 @@ router.post(
         return res.status(500).json({ message: "Failed to upload proof image" });
       }
 
-      // Update order with proof URL
+      // Update order with proof URL and automatically set state to COMPLETED
       const updatedOrder = await prisma.order.update(
         {
           where: { id },
-          data: { paymentProofUrl },
+          data: {
+            paymentProofUrl,
+            state: "COMPLETED",
+            completedAt: new Date(),
+          },
           include: {
             driver: true,
             creator: {
@@ -1592,7 +1597,7 @@ router.post(
       );
 
       res.json({
-        message: "Proof image uploaded successfully",
+        message: "Proof image uploaded successfully and order marked as completed",
         order: updatedOrder,
         proofUrl: paymentProofUrl,
       });
