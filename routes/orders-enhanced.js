@@ -1608,6 +1608,100 @@ router.post(
   }
 );
 
+// POST /api/orders/batch/phone - Search orders by multiple phone numbers
+router.post(
+  "/batch/phone",
+  requireViewOrders,
+  [
+    body("phoneNumbers")
+      .isArray({ min: 1 })
+      .withMessage("Phone numbers array is required"),
+    body("phoneNumbers.*")
+      .trim()
+      .notEmpty()
+      .withMessage("Phone number cannot be empty"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: errors.array(),
+        });
+      }
+
+      const { phoneNumbers } = req.body;
+
+      // Validate and normalize phone numbers
+      const normalizedPhones = [];
+      const invalidPhones = [];
+
+      phoneNumbers.forEach((phone) => {
+        const cleaned = phone.trim();
+        
+        // Basic validation: only digits and reasonable length
+        const digitsOnly = cleaned.replace(/\D/g, "");
+        
+        if (digitsOnly.length < 8 || digitsOnly.length > 15) {
+          invalidPhones.push({ phone: cleaned, reason: "Invalid phone number length" });
+          return;
+        }
+
+        // Normalize: if doesn't start with 0, add it
+        const normalized = digitsOnly.startsWith("0") ? digitsOnly : "0" + digitsOnly;
+        normalizedPhones.push(normalized);
+      });
+
+      if (invalidPhones.length > 0) {
+        return res.status(400).json({
+          message: "Some phone numbers are invalid",
+          invalidPhones,
+        });
+      }
+
+      // Search for orders with matching phone numbers
+      const orders = await prisma.order.findMany({
+        where: {
+          customerPhone: {
+            in: normalizedPhones,
+          },
+        },
+        include: {
+          driver: true,
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          orderItems: {
+            include: {
+              product: true,
+            },
+          },
+        },
+        orderBy: {
+          orderAt: "desc",
+        },
+      });
+
+      res.json({
+        data: {
+          orders,
+          searchedPhones: normalizedPhones,
+          foundCount: orders.length,
+        },
+      });
+    } catch (error) {
+      console.error("Batch phone search error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // GET /api/orders/duplicates/phone - Find duplicate phone numbers
 router.get("/duplicates/phone", requireViewOrders, async (req, res) => {
   try {
