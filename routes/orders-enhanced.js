@@ -124,8 +124,8 @@ router.get(
       .withMessage("Page must be a positive integer"),
     query("limit")
       .optional()
-      .isInt({ min: 1, max: 5000 })
-      .withMessage("Limit must be between 1 and 5000"),
+      .isInt({ min: 1, max: 10000 })
+      .withMessage("Limit must be between 1 and 10000"),
     query("state")
       .optional()
       .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
@@ -176,7 +176,7 @@ router.get(
       const orderSource = req.query.orderSource;
 
       // Prevent large queries without date filtering
-      if (limit > 500 && !dateFrom && !dateTo) {
+      if (limit >= 10000 && !dateFrom && !dateTo) {
         return res.status(400).json({
           message:
             "Large limit requests require date filtering for performance",
@@ -216,31 +216,36 @@ router.get(
         const dateField = assignedOnly ? "assignedAt" : "orderAt";
         where[dateField] = {};
 
+        const offsetMinutes = 7 * 60; // Cambodia UTC+7
+
         if (dateFrom) {
-          // Validate and parse dateFrom
-          const fromDate = new Date(dateFrom);
-          if (isNaN(fromDate.getTime())) {
-            return res.status(400).json({
-              message: "Invalid dateFrom format. Use YYYY-MM-DD",
-            });
-          }
-          // Set to start of day in UTC
-          fromDate.setHours(0, 0, 0, 0);
-          where[dateField].gte = fromDate;
+          const [y, m, d] = dateFrom.split("-").map(Number);
+
+          // Create date in LOCAL Cambodia time
+          const localStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+
+          // Convert LOCAL → UTC (subtract offset)
+          const utcStart = new Date(
+            localStart.getTime() - offsetMinutes * 60000
+          );
+
+          where[dateField].gte = utcStart;
         }
+
         if (dateTo) {
-          // Validate and parse dateTo
-          const toDate = new Date(dateTo);
-          if (isNaN(toDate.getTime())) {
-            return res.status(400).json({
-              message: "Invalid dateTo format. Use YYYY-MM-DD",
-            });
-          }
-          // Set to end of day in UTC
-          toDate.setHours(23, 59, 59, 999);
-          where[dateField].lte = toDate;
+          const [y, m, d] = dateTo.split("-").map(Number);
+
+          // Local end of day in Cambodia
+          const localEnd = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+
+          // Convert LOCAL → UTC (subtract offset)
+          const utcEnd = new Date(localEnd.getTime() - offsetMinutes * 60000);
+
+          where[dateField].lte = utcEnd;
         }
       }
+
+      // if (dateFrom || dateTo) { const dateField = assignedOnly ? "assignedAt" : "orderAt"; where[dateField] = {}; if (dateFrom) { // Validate and parse dateFrom const fromDate = new Date(dateFrom); if (isNaN(fromDate.getTime())) { return res.status(400).json({ message: "Invalid dateFrom format. Use YYYY-MM-DD", }); } // Set to start of day in UTC fromDate.setHours(0, 0, 0, 0); where[dateField].gte = fromDate; } if (dateTo) { // Validate and parse dateTo const toDate = new Date(dateTo); if (isNaN(toDate.getTime())) { return res.status(400).json({ message: "Invalid dateTo format. Use YYYY-MM-DD", }); } // Set to end of day in UTC toDate.setHours(23, 59, 59, 999); where[dateField].lte = toDate; } }
 
       // Filter for assigned orders only
       if (assignedOnly) {
