@@ -163,7 +163,7 @@ router.post(
       const uniqueProductIds = [
         ...new Set(parsedItems.map((item) => item.productId)),
       ];
-      
+
       const products = await prisma.product.findMany({
         where: {
           id: { in: uniqueProductIds },
@@ -184,9 +184,9 @@ router.post(
           message: "One or more products not found or inactive",
         });
       }
-      
+
       // Create product lookup map for O(1) access
-      const productMap = new Map(products.map(p => [p.id, p]));
+      const productMap = new Map(products.map((p) => [p.id, p]));
 
       // Note: Stock validation is not performed here since stock will be checked when driver is assigned
 
@@ -310,7 +310,7 @@ router.post(
                 // Compute safe server-side price using pre-fetched product data
                 const baseProduct = productMap.get(item.productId);
                 let computedPrice = baseProduct?.price || 0;
-                
+
                 // Add variant price adjustment if applicable
                 if (variantId) {
                   const variant = await tx.productVariant.findUnique({
@@ -497,7 +497,7 @@ router.get(
             });
           }
           // Set to start of day in UTC
-          fromDate.setUTCHours(0, 0, 0, 0);
+          fromDate.setHours(0, 0, 0, 0);
           where[dateField].gte = fromDate;
         }
         if (dateTo) {
@@ -509,7 +509,7 @@ router.get(
             });
           }
           // Set to end of day in UTC
-          toDate.setUTCHours(23, 59, 59, 999);
+          toDate.setHours(23, 59, 59, 999);
           where[dateField].lte = toDate;
         }
       }
@@ -573,14 +573,14 @@ router.get(
               },
             },
           },
-        })
+        }),
       ];
-      
+
       // Only count for smaller datasets or when needed
       if (limit <= 500) {
         queries.push(prisma.order.count({ where }));
       }
-      
+
       const results = await Promise.all(queries);
       const orders = results[0];
       const totalCount = results[1] || null;

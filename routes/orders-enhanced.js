@@ -225,7 +225,7 @@ router.get(
             });
           }
           // Set to start of day in UTC
-          fromDate.setUTCHours(0, 0, 0, 0);
+          fromDate.setHours(0, 0, 0, 0);
           where[dateField].gte = fromDate;
         }
         if (dateTo) {
@@ -237,7 +237,7 @@ router.get(
             });
           }
           // Set to end of day in UTC
-          toDate.setUTCHours(23, 59, 59, 999);
+          toDate.setHours(23, 59, 59, 999);
           where[dateField].lte = toDate;
         }
       }
@@ -311,15 +311,15 @@ router.get(
               },
             },
           },
-        })
+        }),
       ];
-      
+
       // Only count for smaller queries or when pagination info is needed
       const shouldCount = limit <= 200 || page === 1;
       if (shouldCount) {
         queries.push(prisma.order.count({ where }));
       }
-      
+
       const results = await Promise.all(queries);
       const orders = results[0];
       const totalCount = results[1] || null;
@@ -454,51 +454,55 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
     }
 
     // Batch validate driver and products to reduce database queries
-    const productIds = [...new Set(convertedProducts.map(p => p.productId))];
+    const productIds = [...new Set(convertedProducts.map((p) => p.productId))];
     const queries = [];
-    
+
     // Add driver validation query if needed
     if (driverId) {
-      queries.push(prisma.driver.findUnique({ 
-        where: { id: driverId },
-        select: { id: true, name: true, isActive: true }
-      }));
+      queries.push(
+        prisma.driver.findUnique({
+          where: { id: driverId },
+          select: { id: true, name: true, isActive: true },
+        })
+      );
     } else {
       queries.push(Promise.resolve(null));
     }
-    
+
     // Optimized product fetch with selective includes
-    queries.push(prisma.product.findMany({
-      where: { 
-        id: { in: productIds },
-        isActive: true
-      },
-      select: {
-        id: true,
-        name: true,
-        price: true,
-        quantity: true,
-        hasOptions: true,
-        isActive: true,
-        optionGroups: {
-          where: { isActive: true },
-          select: {
-            id: true,
-            name: true,
-            options: {
-              where: { isAvailable: true },
-              select: {
-                id: true,
-                name: true,
-                priceType: true,
-                priceValue: true,
+    queries.push(
+      prisma.product.findMany({
+        where: {
+          id: { in: productIds },
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          quantity: true,
+          hasOptions: true,
+          isActive: true,
+          optionGroups: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              name: true,
+              options: {
+                where: { isAvailable: true },
+                select: {
+                  id: true,
+                  name: true,
+                  priceType: true,
+                  priceValue: true,
+                },
               },
             },
           },
         },
-      },
-    }));
-    
+      })
+    );
+
     const [driver, productsData] = await Promise.all(queries);
 
     // Validate driver
@@ -507,7 +511,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
     }
 
     // Create product lookup map for O(1) access
-    const productMap = new Map(productsData.map(p => [p.id, p]));
+    const productMap = new Map(productsData.map((p) => [p.id, p]));
 
     // Validate all products exist
     for (const product of convertedProducts) {
@@ -523,19 +527,24 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
     }
 
     // Optimized batch fetch of variants with selective loading
-    const productsWithOptions = convertedProducts.filter(p => 
-      p._productData.hasOptions && p.optionDetails && p.optionDetails.length > 0
+    const productsWithOptions = convertedProducts.filter(
+      (p) =>
+        p._productData.hasOptions &&
+        p.optionDetails &&
+        p.optionDetails.length > 0
     );
-    
+
     const variantsByProduct = new Map();
     if (productsWithOptions.length > 0) {
-      const variantProductIds = [...new Set(productsWithOptions.map(p => p.productId))];
-      
+      const variantProductIds = [
+        ...new Set(productsWithOptions.map((p) => p.productId)),
+      ];
+
       // Fetch variants with optimized select and joins
       const allVariants = await prisma.productVariant.findMany({
-        where: { 
+        where: {
           productId: { in: variantProductIds },
-          isActive: true
+          isActive: true,
         },
         select: {
           id: true,
@@ -549,7 +558,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
           },
         },
       });
-      
+
       // Group variants by product ID efficiently
       for (const variant of allVariants) {
         if (!variantsByProduct.has(variant.productId)) {
@@ -562,7 +571,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
     // Now validate stock for all products
     for (const product of convertedProducts) {
       const productExists = product._productData;
-      
+
       // Check stock based on whether product has options
       if (
         productExists.hasOptions &&
@@ -645,7 +654,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
           });
         }
       }
-      
+
       // Clean up temporary data
       delete product._productData;
     }
@@ -747,7 +756,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
 
             // Pre-compute all order items data to avoid queries inside transaction
             const orderItemsData = [];
-            
+
             // Process all products in batch for better performance
             for (const product of convertedProducts) {
               // Flatten selected option IDs from optionDetails
@@ -765,8 +774,10 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
               // Use pre-fetched product data to compute price efficiently
               const productData = productMap.get(product.productId);
               const variants = variantsByProduct.get(product.productId) || [];
-              const variant = variantId ? variants.find(v => v.id === variantId) : null;
-              
+              const variant = variantId
+                ? variants.find((v) => v.id === variantId)
+                : null;
+
               const computedPrice =
                 (productData?.price || 0) + (variant?.priceAdjustment || 0);
 
@@ -813,7 +824,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
                 },
               },
             });
-            
+
             return completeOrder;
           });
         } catch (error) {
@@ -881,7 +892,8 @@ router.put(
       // Prevent changing PICKUP orders to DELIVERING
       if (existingOrder.orderSource === "PICKUP" && state === "DELIVERING") {
         return res.status(400).json({
-          message: "Cannot change a pickup order to delivering. Pickup orders can only be PLACED, COMPLETED, or CANCELLED.",
+          message:
+            "Cannot change a pickup order to delivering. Pickup orders can only be PLACED, COMPLETED, or CANCELLED.",
         });
       }
 
@@ -977,16 +989,25 @@ router.put(
       }
 
       // Prevent assigning driver to cancelled orders (would change state to DELIVERING)
-      if (existingOrder.state === "CANCELLED" && driverId !== null && driverId !== undefined) {
+      if (
+        existingOrder.state === "CANCELLED" &&
+        driverId !== null &&
+        driverId !== undefined
+      ) {
         return res.status(400).json({
           message: "Cannot assign driver to a cancelled order",
         });
       }
 
       // Prevent assigning driver to PICKUP orders
-      if (existingOrder.orderSource === "PICKUP" && driverId !== null && driverId !== undefined) {
+      if (
+        existingOrder.orderSource === "PICKUP" &&
+        driverId !== null &&
+        driverId !== undefined
+      ) {
         return res.status(400).json({
-          message: "Cannot assign driver to a pickup order. Pickup orders are for walk-in customers.",
+          message:
+            "Cannot assign driver to a pickup order. Pickup orders are for walk-in customers.",
         });
       }
 
@@ -1404,11 +1425,7 @@ router.delete("/:id", requireDeleteOrders, async (req, res) => {
 // Note: No permission check - anyone can mark orders as printed
 router.put(
   "/:id/mark-printed",
-  [
-    body("isPrinted")
-      .isBoolean()
-      .withMessage("isPrinted must be a boolean"),
-  ],
+  [body("isPrinted").isBoolean().withMessage("isPrinted must be a boolean")],
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -1453,7 +1470,9 @@ router.put(
       });
 
       res.json({
-        message: `Order ${isPrinted ? "marked as printed" : "print status reset"} successfully`,
+        message: `Order ${
+          isPrinted ? "marked as printed" : "print status reset"
+        } successfully`,
         order,
       });
     } catch (error) {
@@ -1468,11 +1487,7 @@ router.put(
 router.put(
   "/:id/reset-print",
   requireEditOrders,
-  [
-    body("isPrinted")
-      .isBoolean()
-      .withMessage("isPrinted must be a boolean"),
-  ],
+  [body("isPrinted").isBoolean().withMessage("isPrinted must be a boolean")],
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -1565,39 +1580,40 @@ router.post(
         );
       } catch (uploadError) {
         console.error("Cloudinary upload error:", uploadError);
-        return res.status(500).json({ message: "Failed to upload proof image" });
+        return res
+          .status(500)
+          .json({ message: "Failed to upload proof image" });
       }
 
       // Update order with proof URL and automatically set state to COMPLETED
-      const updatedOrder = await prisma.order.update(
-        {
-          where: { id },
-          data: {
-            paymentProofUrl,
-            state: "COMPLETED",
-            completedAt: new Date(),
-          },
-          include: {
-            driver: true,
-            creator: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-            orderItems: {
-              include: {
-                product: true,
-              },
+      const updatedOrder = await prisma.order.update({
+        where: { id },
+        data: {
+          paymentProofUrl,
+          state: "COMPLETED",
+          completedAt: new Date(),
+        },
+        include: {
+          driver: true,
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
             },
           },
-        }
-      );
+          orderItems: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
 
       res.json({
-        message: "Proof image uploaded successfully and order marked as completed",
+        message:
+          "Proof image uploaded successfully and order marked as completed",
         order: updatedOrder,
         proofUrl: paymentProofUrl,
       });
@@ -1639,17 +1655,22 @@ router.post(
 
       phoneNumbers.forEach((phone) => {
         const cleaned = phone.trim();
-        
+
         // Basic validation: only digits and reasonable length
         const digitsOnly = cleaned.replace(/\D/g, "");
-        
+
         if (digitsOnly.length < 8 || digitsOnly.length > 15) {
-          invalidPhones.push({ phone: cleaned, reason: "Invalid phone number length" });
+          invalidPhones.push({
+            phone: cleaned,
+            reason: "Invalid phone number length",
+          });
           return;
         }
 
         // Normalize: if doesn't start with 0, add it
-        const normalized = digitsOnly.startsWith("0") ? digitsOnly : "0" + digitsOnly;
+        const normalized = digitsOnly.startsWith("0")
+          ? digitsOnly
+          : "0" + digitsOnly;
         normalizedPhones.push(normalized);
       });
 
