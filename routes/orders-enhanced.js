@@ -1664,7 +1664,7 @@ router.post(
         // Basic validation: only digits and reasonable length
         const digitsOnly = cleaned.replace(/\D/g, "");
 
-        if (digitsOnly.length < 8 || digitsOnly.length > 15) {
+        if (digitsOnly.length < 6 || digitsOnly.length > 15) {
           invalidPhones.push({
             phone: cleaned,
             reason: "Invalid phone number length",
