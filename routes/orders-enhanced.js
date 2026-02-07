@@ -124,8 +124,8 @@ router.get(
       .withMessage("Page must be a positive integer"),
     query("limit")
       .optional()
-      .isInt({ min: 1, max: 10000 })
-      .withMessage("Limit must be between 1 and 10000"),
+      .isInt({ min: 1, max: 1000000 })
+      .withMessage("Limit must be between 1 and 1000000"),
     query("state")
       .optional()
       .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
@@ -163,8 +163,6 @@ router.get(
       }
 
       const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const skip = (page - 1) * limit;
       const state = req.query.state;
       const search = req.query.search;
       const sortBy = req.query.sortBy || "orderAt";
@@ -175,8 +173,18 @@ router.get(
       const allSources = req.query.allSources === "true";
       const orderSource = req.query.orderSource;
 
+      // If dateFrom and dateTo are provided, allow large fetch (default 50000 max)
+      // Otherwise default to 10 for safety
+      const limit =
+        dateFrom && dateTo
+          ? req.query.limit
+            ? parseInt(req.query.limit)
+            : 50000
+          : parseInt(req.query.limit) || 10;
+      const skip = limit !== undefined ? (page - 1) * limit : 0;
+
       // Prevent large queries without date filtering
-      if (limit >= 10000 && !dateFrom && !dateTo) {
+      if (limit && limit >= 1000000 && !dateFrom && !dateTo) {
         return res.status(400).json({
           message:
             "Large limit requests require date filtering for performance",
@@ -274,53 +282,57 @@ router.get(
       orderBy[dbSortField] = sortOrder.toLowerCase() === "asc" ? "asc" : "desc";
 
       // Get orders with pagination - optimized includes and parallel execution
-      const queries = [
-        prisma.order.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy,
-          include: {
-            driver: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-              },
+      const findManyOptions = {
+        where,
+        skip,
+        orderBy,
+        include: {
+          driver: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
             },
-            creator: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
+          },
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
             },
-            orderItems: {
-              take: 50, // Increased limit for better UX while still optimal
-              select: {
-                id: true,
-                productId: true,
-                quantity: true,
-                price: true,
-                weight: true,
-                optionDetails: true,
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    imageUrl: true,
-                    weight: true,
-                  },
+          },
+          orderItems: {
+            take: 50, // Increased limit for better UX while still optimal
+            select: {
+              id: true,
+              productId: true,
+              quantity: true,
+              price: true,
+              weight: true,
+              optionDetails: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  imageUrl: true,
+                  weight: true,
                 },
               },
             },
           },
-        }),
-      ];
+        },
+      };
+
+      // Only add take if limit is defined
+      if (limit !== undefined && limit !== null) {
+        findManyOptions.take = limit;
+      }
+
+      const queries = [prisma.order.findMany(findManyOptions)];
 
       // Only count for smaller queries or when pagination info is needed
-      const shouldCount = limit <= 200 || page === 1;
+      const shouldCount = (limit !== undefined && limit <= 200) || page === 1;
       if (shouldCount) {
         queries.push(prisma.order.count({ where }));
       }
@@ -329,7 +341,8 @@ router.get(
       const orders = results[0];
       const totalCount = results[1] || null;
 
-      const totalPages = totalCount ? Math.ceil(totalCount / limit) : null;
+      const totalPages =
+        limit && totalCount ? Math.ceil(totalCount / limit) : null;
 
       res.json({
         orders,
@@ -337,13 +350,21 @@ router.get(
           currentPage: page,
           totalPages,
           totalCount,
-          hasNext: totalCount ? page < totalPages : orders.length === limit,
+          hasNext:
+            limit && totalCount
+              ? page < totalPages
+              : limit
+              ? orders.length === limit
+              : false,
           hasPrev: page > 1,
         },
       });
     } catch (error) {
       console.error("Get orders error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      console.error("Error stack:", error.stack);
+      res
+        .status(500)
+        .json({ message: "Internal server error", error: error.message });
     }
   }
 );

@@ -411,8 +411,8 @@ router.get(
       .withMessage("Page must be a positive integer"),
     query("limit")
       .optional()
-      .isInt({ min: 1, max: 10000 })
-      .withMessage("Limit must be between 1 and 10000"),
+      .isInt({ min: 1, max: 1000000 })
+      .withMessage("Limit must be between 1 and 1000000"),
     query("state")
       .optional()
       .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
@@ -457,7 +457,7 @@ router.get(
       const dateTo = req.query.dateTo;
 
       // Prevent large queries without date filtering
-      if (limit >= 10000 && !dateFrom && !dateTo) {
+      if (limit >= 1000000 && !dateFrom && !dateTo) {
         return res.status(400).json({
           message:
             "Large limit requests require date filtering for performance",
