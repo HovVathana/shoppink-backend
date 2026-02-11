@@ -11,7 +11,7 @@ const { cacheMiddleware } = require("../middleware/cache");
 const router = express.Router();
 const prisma = getPrismaClient();
 
-// All routes require authentication
+// All routes require authentications
 router.use(authenticateUser);
 
 const normalizePhone = (p) => (p || "").replace(/[^0-9]/g, "");
@@ -34,14 +34,20 @@ router.post(
   "/",
   requireEditOrders,
   [
-    body("phone").isString().trim().isLength({ min: 3 }).withMessage("Phone is required"),
+    body("phone")
+      .isString()
+      .trim()
+      .isLength({ min: 3 })
+      .withMessage("Phone is required"),
     body("reason").optional().isString().trim().isLength({ max: 300 }),
   ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: "Validation failed", errors: errors.array() });
+        return res
+          .status(400)
+          .json({ message: "Validation failed", errors: errors.array() });
       }
 
       const { phone, reason } = req.body;
@@ -73,7 +79,7 @@ router.post(
       }
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // DELETE /api/blacklist-phones/:id - delete entry
@@ -85,11 +91,15 @@ router.delete(
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: "Validation failed", errors: errors.array() });
+        return res
+          .status(400)
+          .json({ message: "Validation failed", errors: errors.array() });
       }
       const { id } = req.params;
 
-      const existing = await prisma.blacklistedPhone.findUnique({ where: { id } });
+      const existing = await prisma.blacklistedPhone.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return res.status(404).json({ message: "Entry not found" });
       }
@@ -100,7 +110,7 @@ router.delete(
       console.error("Delete blacklist phone error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 // Optional check endpoint: GET /api/blacklist-phones/check?phone=... with caching
@@ -113,18 +123,21 @@ router.get(
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: "Validation failed", errors: errors.array() });
+        return res
+          .status(400)
+          .json({ message: "Validation failed", errors: errors.array() });
       }
       const normalized = normalizePhone(req.query.phone);
       if (!normalized) return res.json({ data: { blacklisted: false } });
-      const entry = await prisma.blacklistedPhone.findUnique({ where: { phone: normalized } });
+      const entry = await prisma.blacklistedPhone.findUnique({
+        where: { phone: normalized },
+      });
       res.json({ data: { blacklisted: !!entry, entry } });
     } catch (error) {
       console.error("Check blacklist phone error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  }
+  },
 );
 
 module.exports = router;
-
