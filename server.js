@@ -28,7 +28,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Trust proxy - required for Vercel and other proxies/load balancers
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 // Performance middleware (safe versions to avoid header conflicts)
 app.use(setupCompression());
@@ -104,16 +104,16 @@ app.options("*", cors(corsOptions));
 // Smart caching strategy
 app.use((req, res, next) => {
   // Allow caching for GET requests (read operations)
-  if (req.method === 'GET') {
+  if (req.method === "GET") {
     res.set({
-      'Cache-Control': 'public, max-age=60', // Cache GET for 1 minute
+      "Cache-Control": "public, max-age=60", // Cache GET for 1 minute
     });
   } else {
     // Don't cache mutations (POST, PUT, DELETE, PATCH)
     res.set({
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-      'Pragma': 'no-cache',
-      'Expires': '0'
+      "Cache-Control": "no-store, no-cache, must-revalidate, private",
+      Pragma: "no-cache",
+      Expires: "0",
     });
   }
   next();
@@ -155,7 +155,7 @@ app.get("/api/health/cache", (req, res) => {
   }
 });
 
-// Fast health check endpoint (no database connection)
+// Fast health check endpoints (no database connection)
 app.get("/api/health", (req, res) => {
   const startTime = Date.now();
   const responseTime = Date.now() - startTime;
@@ -182,7 +182,7 @@ app.get("/api/health/database", async (req, res) => {
     // Simple database query to test connection with timeout
     const queryPromise = prisma.$queryRaw`SELECT 1`;
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Database query timeout")), 5000)
+      setTimeout(() => reject(new Error("Database query timeout")), 5000),
     );
 
     await Promise.race([queryPromise, timeoutPromise]);
@@ -215,18 +215,18 @@ app.get("/api/health/database", async (req, res) => {
 // Error handling middleware with CORS
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  
+
   // Ensure CORS headers are set on error responses
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.header("Access-Control-Allow-Credentials", "true");
-  
+
   // Never cache error responses
   res.set({
-    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-    'Pragma': 'no-cache',
-    'Expires': '0'
+    "Cache-Control": "no-store, no-cache, must-revalidate, private",
+    Pragma: "no-cache",
+    Expires: "0",
   });
-  
+
   res.status(err.status || 500).json({
     message: err.message || "Something went wrong!",
     error:
