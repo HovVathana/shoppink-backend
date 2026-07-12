@@ -147,6 +147,11 @@ router.get(
                 },
               },
             },
+            _count: {
+              select: {
+                orderComment: true,
+              },
+            },
           },
         }),
         prisma.order.count({ where }),

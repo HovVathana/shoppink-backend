@@ -369,6 +369,8 @@ router.post(
         bannerColor = "blue",
         bannerType = "info",
         originalPrice: originalPriceStr,
+        secondCompanyDeliveryUsd: secondUsdStr,
+        secondCompanyDeliveryKhr: secondKhrStr,
       } = req.body;
 
       // Handle image upload
@@ -400,6 +402,12 @@ router.post(
       const originalPrice = originalPriceStr
         ? parseFloat(originalPriceStr)
         : null;
+      const secondCompanyDeliveryUsd = secondUsdStr
+        ? parseFloat(secondUsdStr)
+        : 0;
+      const secondCompanyDeliveryKhr = secondKhrStr
+        ? parseFloat(secondKhrStr)
+        : 0;
 
       // Convert boolean strings to actual booleans
       const isActiveBool = isActive === "true" || isActive === true;
@@ -482,6 +490,8 @@ router.post(
           bannerColor,
           bannerType,
           originalPrice,
+          secondCompanyDeliveryUsd,
+          secondCompanyDeliveryKhr,
         },
         include: {
           category: {
@@ -574,6 +584,8 @@ router.put(
         bannerColor,
         bannerType,
         originalPrice: originalPriceStr,
+        secondCompanyDeliveryUsd: secondUsdStr,
+        secondCompanyDeliveryKhr: secondKhrStr,
       } = req.body;
 
       // Handle image upload (optional for updates)
@@ -607,6 +619,12 @@ router.put(
       const originalPrice = isNaN(originalPriceStr)
         ? null
         : parseFloat(originalPriceStr);
+      const secondCompanyDeliveryUsd = secondUsdStr !== undefined
+        ? parseFloat(secondUsdStr)
+        : undefined;
+      const secondCompanyDeliveryKhr = secondKhrStr !== undefined
+        ? parseFloat(secondKhrStr)
+        : undefined;
 
       // Convert boolean strings to actual booleans
       const isActiveBool =
@@ -699,6 +717,8 @@ router.put(
           bannerColor,
           bannerType,
           originalPrice,
+          secondCompanyDeliveryUsd,
+          secondCompanyDeliveryKhr,
         },
         include: {
           category: {

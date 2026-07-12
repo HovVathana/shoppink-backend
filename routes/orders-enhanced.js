@@ -321,6 +321,11 @@ router.get(
               },
             },
           },
+          _count: {
+            select: {
+              orderComments: true,
+            },
+          },
         },
       };
 
@@ -509,6 +514,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
           quantity: true,
           hasOptions: true,
           isActive: true,
+          secondCompanyDeliveryKhr: true,
           optionGroups: {
             where: { isActive: true },
             select: {
@@ -685,6 +691,15 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
       delete product._productData;
     }
 
+    // Calculate second company delivery total for Phnom Penh orders
+    const secondCompanyDeliveryTotal =
+      province === "Phnom Penh"
+        ? convertedProducts.reduce((sum, product) => {
+            const productData = productMap.get(product.productId);
+            return sum + (productData?.secondCompanyDeliveryKhr || 0) * product.quantity;
+          }, 0)
+        : 0;
+
     // Generate custom order ID with timestamp + random: SP + DDMMYY + HHMM + 5 random chars
     const generateCustomOrderId = () => {
       const now = new Date();
@@ -731,6 +746,7 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
                 orderSource,
                 createdBy: req.user.id,
                 assignedAt: driverId ? new Date() : null,
+                secondCompanyDeliveryTotal,
               },
             });
 
@@ -1174,6 +1190,7 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
       companyDeliveryPrice: companyDeliveryPriceStr,
       deliveryPrice: deliveryPriceStr,
       totalPrice: totalPriceStr,
+      secondCompanyDeliveryTotal: secondCompanyDeliveryStr,
       isPaid: isPaidRaw,
       driverId,
       orderSource,
@@ -1186,6 +1203,9 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
     const deliveryPrice = parseFloat(deliveryPriceStr);
     const totalPrice = parseFloat(totalPriceStr);
     const isPaid = isPaidRaw === true || isPaidRaw === "true";
+    const secondCompanyDeliveryTotal = secondCompanyDeliveryStr !== undefined
+      ? parseFloat(secondCompanyDeliveryStr)
+      : undefined;
 
     // Validate converted values
     if (isNaN(subtotalPrice) || subtotalPrice < 0) {
@@ -1279,6 +1299,7 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
         companyDeliveryPrice,
         deliveryPrice,
         totalPrice,
+        secondCompanyDeliveryTotal,
         isPaid,
         driverId: driverId || null,
         ...(orderSource && { orderSource }),

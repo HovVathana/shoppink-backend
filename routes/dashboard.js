@@ -32,6 +32,8 @@ router.get("/stats", cacheMiddleware(120), requireDashboardAccess, async (req, r
       lastMonthRevenue,
       recentOrders,
       topProducts,
+      monthlySecondDelivery,
+      lastMonthSecondDelivery,
     ] = await Promise.all([
       // Product stats
       prisma.product.count(),
@@ -90,6 +92,22 @@ router.get("/stats", cacheMiddleware(120), requireDashboardAccess, async (req, r
         orderBy: { _sum: { quantity: "desc" } },
         take: 5,
       }),
+
+      // Second company delivery totals
+      prisma.order.aggregate({
+        where: {
+          createdAt: { gte: startOfMonth },
+          state: { not: "CANCELLED" },
+        },
+        _sum: { secondCompanyDeliveryTotal: true },
+      }),
+      prisma.order.aggregate({
+        where: {
+          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+          state: { not: "CANCELLED" },
+        },
+        _sum: { secondCompanyDeliveryTotal: true },
+      }),
     ]);
 
     // Get product details for top products - optimized to avoid N+1 query
@@ -143,6 +161,8 @@ router.get("/stats", cacheMiddleware(120), requireDashboardAccess, async (req, r
         monthlyOrders,
         orderGrowth: parseFloat(orderGrowth),
         revenueGrowth: parseFloat(revenueGrowth),
+        monthlySecondDelivery: monthlySecondDelivery._sum.secondCompanyDeliveryTotal || 0,
+        lastMonthSecondDelivery: lastMonthSecondDelivery._sum.secondCompanyDeliveryTotal || 0,
       },
       recentOrders,
       topProducts: topProductsWithDetails,

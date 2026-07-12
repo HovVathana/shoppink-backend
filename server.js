@@ -23,6 +23,7 @@ const publicRoutes = require("./routes/public");
 const staffRoutes = require("./routes/staff");
 const customerOrderRoutes = require("./routes/customer-orders");
 const blacklistPhoneRoutes = require("./routes/blacklist-phones");
+const commentRoutes = require("./routes/comments");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -133,6 +134,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/blacklist-phones", blacklistPhoneRoutes);
+app.use("/api/comments", commentRoutes);
 
 app.use("/api/staff", staffRoutes);
 app.use("/api/customer-orders", customerOrderRoutes);

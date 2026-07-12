@@ -22,9 +22,11 @@ model User {
   updatedAt      DateTime  @updatedAt
 
   // Relations
-  createdOrders Order[] @relation("OrderCreator")
-  createdUsers  User[]  @relation("UserCreator")
-  creator       User?   @relation("UserCreator", fields: [createdBy], references: [id])
+  createdOrders    Order[]         @relation("OrderCreator")
+  createdUsers     User[]          @relation("UserCreator")
+  creator          User?           @relation("UserCreator", fields: [createdBy], references: [id])
+  createdComments  OrderComment[]
+  approvedComments OrderComment[]  @relation("CommentApprover")
 
   @@map("users")
 }
@@ -62,8 +64,10 @@ model Product {
   originalPrice               Float?
   isOnSale                    Boolean  @default(false)
   hasOptions                  Boolean  @default(false)
-  note                        String? // Small note for marking/tracking product info
-  createdAt                   DateTime @default(now())
+  note                              String? // Small note for marking/tracking product info
+  secondCompanyDeliveryUsd          Float   @default(0)
+  secondCompanyDeliveryKhr          Float   @default(0)
+  createdAt                         DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
   // Relations
@@ -233,6 +237,7 @@ model Order {
   totalPrice           Float
   isPaid               Boolean    @default(false)
   isPrinted            Boolean    @default(false)
+  secondCompanyDeliveryTotal Float  @default(0)
 
   driverId          String?
   deletedDriverName String? // Store driver name when driver is deleted
@@ -250,6 +255,7 @@ model Order {
   driver     Driver?     @relation(fields: [driverId], references: [id])
   creator    User?       @relation("OrderCreator", fields: [createdBy], references: [id])
   orderItems OrderItem[]
+  orderComments OrderComment[]
   Customer   Customer?   @relation(fields: [customerId], references: [id])
   customerId String?
 
@@ -307,6 +313,35 @@ enum UserRole {
   ADMIN
   MANAGER
   STAFF
+}
+
+model OrderComment {
+  id        String            @id @default(cuid())
+  orderId   String
+  userId    String
+  content   String
+  status    CommentStatus     @default(PENDING)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  approvedBy String?
+
+  // Relations
+  order     Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creator   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approver  User?             @relation("CommentApprover", fields: [approvedBy], references: [id])
+
+  // Performance indexes
+  @@index([orderId]) // For comments per order
+  @@index([userId]) // For comments by user
+  @@index([status]) // For filtering comments by status
+  @@index([createdAt]) // For sorting comments
+  @@map("order_comments")
+}
+
+enum CommentStatus {
+  PENDING
+  CONFIRMED
+  DENIED
 }
 
 model BlacklistedPhone {
