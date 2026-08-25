@@ -13,6 +13,15 @@ const { cacheMiddleware } = require("../middleware/cache");
 const multer = require("multer");
 const { v2: cloudinary } = require("cloudinary");
 
+const EXCHANGE_STATES = ["EXCHANGE", "COMPLETE_EXCHANGE"];
+
+// Users need the exchange_orders permission (or ADMIN role) to move orders
+// into or out of exchange states
+const canManageExchange = (req, state) =>
+  !EXCHANGE_STATES.includes(state) ||
+  req.user.role === "ADMIN" ||
+  req.user.permissions.includes("exchange_orders");
+
 // Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -85,7 +94,7 @@ const orderValidation = [
   body("remark").optional().trim(),
   body("state")
     .optional()
-    .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
+    .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED", "EXCHANGE", "COMPLETE_EXCHANGE"]),
   body("subtotalPrice")
     .isFloat({ min: 0 })
     .withMessage("Subtotal price must be positive"),
@@ -128,7 +137,7 @@ router.get(
       .withMessage("Limit must be between 1 and 1000000"),
     query("state")
       .optional()
-      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"]),
+      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED", "EXCHANGE", "COMPLETE_EXCHANGE"]),
     query("search").optional().trim(),
     query("sortBy")
       .optional()
@@ -459,6 +468,13 @@ router.post("/", requireCreateOrders, orderValidation, async (req, res) => {
     }
     if (isNaN(totalPrice) || totalPrice < 0) {
       return res.status(400).json({ message: "Invalid total price value" });
+    }
+
+    // Require exchange_orders permission for exchange states
+    if (!canManageExchange(req, state)) {
+      return res.status(403).json({
+        message: "Access denied. Required permission: exchange_orders",
+      });
     }
 
     // Convert product prices and quantities
@@ -899,7 +915,7 @@ router.put(
   requireEditOrders,
   [
     body("state")
-      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED"])
+      .isIn(["PLACED", "DELIVERING", "RETURNED", "COMPLETED", "CANCELLED", "EXCHANGE", "COMPLETE_EXCHANGE"])
       .withMessage("Invalid state"),
   ],
   async (req, res) => {
@@ -939,6 +955,13 @@ router.put(
         });
       }
 
+      // Require exchange_orders permission for exchange states
+      if (!canManageExchange(req, state)) {
+        return res.status(403).json({
+          message: "Access denied. Required permission: exchange_orders",
+        });
+      }
+
       const updateData = { state };
 
       // Set completion time if state is COMPLETED
@@ -973,11 +996,11 @@ router.put(
       });
 
       // Apply stock changes strictly based on state transition
-      if (state === "DELIVERING" && existingOrder.state !== "DELIVERING") {
-        await stockManagementService.deductStockForOrder(id);
-      } else if (state === "RETURNED" && existingOrder.state !== "RETURNED") {
-        await stockManagementService.restoreStockForOrder(id);
-      }
+      await stockManagementService.syncStockForStateChange(
+        id,
+        existingOrder.state,
+        state
+      );
 
       res.json({
         message: "Order state updated successfully",
@@ -1137,24 +1160,11 @@ router.put(
         `[DRIVER ASSIGNMENT DEBUG] Order ${id}: ${currentState} → ${newState}`
       );
 
-      if (newState === "DELIVERING" && currentState !== "DELIVERING") {
-        // State changed TO "DELIVERING" - deduct stock
-        console.log(
-          `[DRIVER ASSIGNMENT DEBUG] Deducting stock for state change: ${currentState} → ${newState}`
-        );
-        await stockManagementService.deductStockForOrder(id);
-      } else if (newState === "RETURNED" && currentState !== "RETURNED") {
-        // State changed TO "RETURNED" - restore stock
-        console.log(
-          `[DRIVER ASSIGNMENT DEBUG] Restoring stock for state change: ${currentState} → ${newState}`
-        );
-        await stockManagementService.restoreStockForOrder(id);
-      } else {
-        console.log(
-          `[DRIVER ASSIGNMENT DEBUG] No stock change needed for: ${currentState} → ${newState}`
-        );
-      }
-      // Do nothing for other state changes or no state change
+      await stockManagementService.syncStockForStateChange(
+        id,
+        currentState,
+        newState
+      );
 
       res.json({
         message: "Driver assignment updated successfully",
@@ -1221,6 +1231,13 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
     }
     if (isNaN(totalPrice) || totalPrice < 0) {
       return res.status(400).json({ message: "Invalid total price value" });
+    }
+
+    // Require exchange_orders permission for exchange states
+    if (!canManageExchange(req, state)) {
+      return res.status(403).json({
+        message: "Access denied. Required permission: exchange_orders",
+      });
     }
 
     // Convert product prices and quantities
@@ -1375,24 +1392,11 @@ router.put("/:id", requireEditOrders, orderValidation, async (req, res) => {
 
     console.log(`[STOCK DEBUG] Order ${id}: ${currentState} → ${newState}`);
 
-    if (newState === "DELIVERING" && currentState !== "DELIVERING") {
-      // State changed TO "DELIVERING" - deduct stock
-      console.log(
-        `[STOCK DEBUG] Deducting stock for state change: ${currentState} → ${newState}`
-      );
-      await stockManagementService.deductStockForOrder(id);
-    } else if (newState === "RETURNED" && currentState !== "RETURNED") {
-      // State changed TO "RETURNED" - restore stock
-      console.log(
-        `[STOCK DEBUG] Restoring stock for state change: ${currentState} → ${newState}`
-      );
-      await stockManagementService.restoreStockForOrder(id);
-    } else {
-      console.log(
-        `[STOCK DEBUG] No stock change needed for: ${currentState} → ${newState}`
-      );
-    }
-    // Do nothing for other state changes (like COMPLETED, PLACED, etc.)
+    await stockManagementService.syncStockForStateChange(
+      id,
+      currentState,
+      newState
+    );
 
     // Fetch updated order with relations
     const order = await prisma.order.findUnique({

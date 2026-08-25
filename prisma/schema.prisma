@@ -298,6 +298,8 @@ enum OrderState {
   RETURNED
   COMPLETED
   CANCELLED
+  EXCHANGE
+  COMPLETE_EXCHANGE
 }
 
 enum OrderStatus {

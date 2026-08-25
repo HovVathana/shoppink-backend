@@ -26,6 +26,7 @@ const getRolePermissions = (role) => {
       "create_orders",
       "edit_orders",
       "delete_orders",
+      "exchange_orders",
     ],
     MANAGER: [
       "view_dashboard",
@@ -35,6 +36,7 @@ const getRolePermissions = (role) => {
       "view_orders",
       "create_orders",
       "edit_orders",
+      "exchange_orders",
     ],
     STAFF: ["view_products", "view_orders"],
   };
@@ -385,6 +387,11 @@ router.get("/permissions/list", authenticateUser, requireAdmin, (req, res) => {
       id: "delete_orders",
       name: "Delete Orders",
       description: "Cancel or remove orders",
+    },
+    {
+      id: "exchange_orders",
+      name: "Exchange Orders",
+      description: "Move orders to Exchange / Complete Exchange states",
     },
   ];
 

@@ -75,6 +75,38 @@ class StockManagementService {
   }
 
   /**
+   * Deduct or restore stock based on a state transition.
+   * Stock is held (deducted) in DELIVERING and EXCHANGE, and
+   * returned in RETURNED and COMPLETE_EXCHANGE.
+   */
+  async syncStockForStateChange(orderId, currentState, newState) {
+    const stockHeldStates = ["DELIVERING", "EXCHANGE"];
+
+    if (
+      (newState === "DELIVERING" || newState === "EXCHANGE") &&
+      !stockHeldStates.includes(currentState)
+    ) {
+      console.log(
+        `[STOCK] Deducting stock for state change: ${currentState} → ${newState}`
+      );
+      return this.deductStockForOrder(orderId);
+    }
+
+    if (
+      (newState === "RETURNED" || newState === "COMPLETE_EXCHANGE") &&
+      stockHeldStates.includes(currentState)
+    ) {
+      console.log(
+        `[STOCK] Restoring stock for state change: ${currentState} → ${newState}`
+      );
+      return this.restoreStockForOrder(orderId);
+    }
+
+    console.log(`[STOCK] No stock change needed for: ${currentState} → ${newState}`);
+    return { success: true, noChange: true };
+  }
+
+  /**
    * Deduct stock for a single order item
    */
   async deductStockForItem(orderItem) {

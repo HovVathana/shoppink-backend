@@ -111,11 +111,13 @@ const requireViewOrders = requirePermission("view_orders");
 const requireCreateOrders = requirePermission("create_orders");
 const requireEditOrders = requirePermission("edit_orders");
 const requireDeleteOrders = requirePermission("delete_orders");
+const requireExchangeOrders = requirePermission("exchange_orders");
 const requireOrderAccess = requireAnyPermission([
   "view_orders",
   "create_orders",
   "edit_orders",
   "delete_orders",
+  "exchange_orders",
 ]);
 
 // Category permissions
@@ -185,6 +187,7 @@ module.exports = {
   requireCreateOrders,
   requireEditOrders,
   requireDeleteOrders,
+  requireExchangeOrders,
   requireOrderAccess,
   // Categories
   requireViewCategories,
